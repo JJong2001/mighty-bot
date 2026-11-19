@@ -1,5 +1,6 @@
 # 개인 문서와 대국·피드백·임시 작업 기록
 *.md
+!/README.md
 *.docx
 *.pdf
 /outputs/
