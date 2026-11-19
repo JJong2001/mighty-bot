@@ -67,7 +67,13 @@ public final class RoundService {
     Seat actor = round.currentSeat().orElseThrow(
         () -> new IllegalStateException("이미 종료된 판입니다."));
     switch (round.phase()) {
-      case BEFORE_KITTY -> round.takeKitty(actor);
+      case BEFORE_KITTY -> {
+        if (preparation.isPresent()) {
+          preparation.orElseThrow().beforeKitty(round,
+              bid -> round.reviseContract(actor, bid));
+        }
+        round.takeKitty(actor);
+      }
       case DISCARD -> {
         if (preparation.isPresent()) {
           preparation.orElseThrow().discard(round, bid -> round.reviseContract(actor, bid),

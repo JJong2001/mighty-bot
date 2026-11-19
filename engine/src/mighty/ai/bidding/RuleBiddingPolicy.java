@@ -18,8 +18,9 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
 
   private final RuleDealMissPolicy dealMiss = new RuleDealMissPolicy();
   private final BiddingHandEvaluator evaluator = new BiddingHandEvaluator();
+  private final BidExpectedScoreEvaluator expectedScores = new BidExpectedScoreEvaluator();
 
-  private record Candidate(BidOffer offer, BidAssessment assessment) {
+  private record Candidate(BidOffer offer, BidAssessment assessment, double expectedScore) {
 
   }
 
@@ -39,10 +40,12 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
             .filter(offer -> offer.bid().points() >= assessment.openingPoints()
                 && offer.bid().points() <= assessment.ceilingPoints())
             .min(Comparator.comparingInt(offer -> offer.bid().points()))
-            .map(offer -> new Candidate(offer, assessment)).stream()).toList();
+            .map(offer -> new Candidate(offer, assessment,
+                expectedScores.expectedScoreAfterPreKitty(hand, offer.bid()))).stream()).toList();
     if (!candidates.isEmpty()) {
       return candidates.stream().max(Comparator
-              .<Candidate>comparingInt(candidate -> candidate.assessment().preference())
+              .<Candidate>comparingDouble(Candidate::expectedScore)
+              .thenComparingInt(candidate -> candidate.assessment().preference())
               .thenComparingInt(candidate -> -candidate.offer().bid().points()))
           .orElseThrow().offer();
     }

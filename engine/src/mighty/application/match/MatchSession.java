@@ -185,7 +185,13 @@ public final class MatchSession {
     }
     return switch (phase()) {
       case BIDDING -> "추천: " + biddingLabel(biddingPolicy.choose(biddingView()));
-      case BEFORE_KITTY -> "바닥을 받은 뒤 버릴 세 장을 선택하세요.";
+      case BEFORE_KITTY -> {
+        var state = round.orElseThrow();
+        Bid recommendation = policies.preparation().beforeKittyContract(
+            state.beforeKittyHand(HUMAN), state.contractHistory().get(0), state.contract());
+        yield "추천 공약: " + bidLabel(recommendation)
+            + "\n바닥을 들기 전에 공약을 확인하고, 바닥을 받은 뒤 버릴 세 장을 선택하세요.";
+      }
       case DISCARD -> {
         var state = round.orElseThrow();
         var plan = policies.preparation()
@@ -230,7 +236,10 @@ public final class MatchSession {
   public void advanceAi() throws IOException {
     switch (phase()) {
       case BIDDING -> bid(biddingPolicy.choose(biddingView()), "bot");
-      case BEFORE_KITTY -> takeKitty("bot");
+      case BEFORE_KITTY -> {
+        preparation.beforeKitty(round.orElseThrow(), this::reviseContract);
+        takeKitty("bot");
+      }
       case DISCARD -> preparation.discard(round.orElseThrow(), this::reviseContract,
           cards -> discard(cards, "bot"));
       case FRIEND -> preparation.chooseFriend(round.orElseThrow(), this::reviseContract,

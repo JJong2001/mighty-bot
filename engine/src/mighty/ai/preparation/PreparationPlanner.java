@@ -15,6 +15,35 @@ public final class PreparationPlanner {
   private final RuleDiscardPolicy discard = new RuleDiscardPolicy();
   private final RuleFriendPolicy friend = new RuleFriendPolicy();
   private final BiddingHandEvaluator bids = new BiddingHandEvaluator();
+  private final BidExpectedScoreEvaluator expectedScores = new BidExpectedScoreEvaluator();
+
+  /**
+   * 바닥을 들기 전에 자기 열 장으로 가능한 합법 전환을 점수 기준으로 비교합니다.
+   */
+  public Bid beforeKittyContract(List<Card> hand, Bid awarded, Bid current) {
+    var cards = BiddingHand.from(hand);
+    Bid best = current;
+    double bestScore = expectedScores.expectedDeclarerScore(cards, current);
+    for (var assessment : bids.assess(cards)) {
+      if (!assessment.canCompete()) {
+        continue;
+      }
+      int start = current.points();
+      for (int points = start; points <= assessment.ceilingPoints(); points++) {
+        Bid candidate = new Bid(points, assessment.trump());
+        if (candidate.equals(current) || !ContractChangeRules.canChange(awarded, current,
+            candidate, GamePhase.BEFORE_KITTY)) {
+          continue;
+        }
+        double score = expectedScores.expectedDeclarerScore(cards, candidate);
+        if (score > bestScore) {
+          best = candidate;
+          bestScore = score;
+        }
+      }
+    }
+    return best;
+  }
 
   public PreparationPlan choose(DiscardView view) {
     return choose(view, view.contract());
