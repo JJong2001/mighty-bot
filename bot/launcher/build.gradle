@@ -1,0 +1,17 @@
+plugins {
+    id 'java'
+}
+
+sourceSets.main.java {
+    srcDirs = ['.']
+    include 'BotLauncher.java'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
+
+tasks.named('jar') {
+    archiveFileName = 'bot-launcher.jar'
+}

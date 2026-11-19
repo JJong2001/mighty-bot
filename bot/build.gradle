@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+}
+
+sourceSets {
+    main.java {
+        srcDirs = ['.']
+        include 'BotBridge.java', 'BridgeRecords.java', 'BridgeHttpServer.java'
+    }
+    parity {
+        java.srcDirs = ['tests']
+        compileClasspath += sourceSets.main.runtimeClasspath
+    }
+}
+
+dependencies {
+    implementation project(':')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
+
+def engineJar = rootProject.tasks.named('jar', Jar)
+
+tasks.register('botJar', Jar) {
+    dependsOn tasks.classes, engineJar
+    archiveFileName = 'bot-bridge.jar'
+    manifest.attributes('Main-Class': 'mighty.bridge.BotBridge')
+    from sourceSets.main.output
+    // 검증한 엔진 JAR의 클래스와 리소스를 배포용 JAR에 그대로 넣습니다.
+    from({ zipTree(engineJar.get().archiveFile.get().asFile) }) {
+        exclude 'META-INF/MANIFEST.MF'
+    }
+}
+
+tasks.register('policyParity', JavaExec) {
+    dependsOn tasks.named('parityClasses'), tasks.named('botJar')
+    classpath = files(tasks.named('botJar').flatMap { it.archiveFile }, sourceSets.parity.output)
+    mainClass = 'mighty.bridge.PolicyParityCheck'
+    jvmArgs '-Dfile.encoding=UTF-8'
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('policyParity')
+}
+

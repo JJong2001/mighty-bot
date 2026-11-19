@@ -1,0 +1,13 @@
+rootProject.name = 'mighty-engine'
+
+include 'bridge', 'launcher'
+project(':bridge').projectDir = file('../bot')
+project(':launcher').projectDir = file('../bot/launcher')
+
+// 직접 플레이 화면은 로컬에만 보관하며, 봇 전용 빌드에는 참여하지 않습니다.
+def localDesktopDir = file('../local-desktop')
+if (localDesktopDir.toPath().resolve('build.gradle').toFile().isFile()
+        && !providers.gradleProperty('botOnly').isPresent()) {
+    include 'localDesktop'
+    project(':localDesktop').projectDir = localDesktopDir
+}

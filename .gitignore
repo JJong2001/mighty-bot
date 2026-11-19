@@ -1,0 +1,45 @@
+# 개인 문서와 대국·피드백·임시 작업 기록
+*.md
+*.docx
+*.pdf
+/outputs/
+/work/
+/engine/data/
+/local-desktop/
+# 기존 로컬 실행 버튼의 호환 진입점도 공유하지 않습니다.
+/engine/run.ps1
+/engine/실행.cmd
+/engine/피드백.cmd
+
+# 빌드 산출물과 개발 도구의 로컬 설정
+**/build/
+**/.gradle/
+**/.idea/
+*.iml
+*.class
+*.jar
+!engine/gradle/wrapper/gradle-wrapper.jar
+*.zip
+*.exe
+*.log
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# 개인 인증 및 실행 환경 설정
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# 맵 소스·자산·검사 도구는 모두 로컬 전용입니다.
+/tts-map/
+
+# 봇의 실행 중 생성되는 로컬 파일
+/bot/classes/
+/bot/BridgeJson.java
+/bot/compile_args.txt
+/bot/jdk_path.txt
+/bot/service_pid.txt
