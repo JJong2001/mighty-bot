@@ -1,0 +1,65 @@
+name: Release Mighty Bot
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bot-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: 배포할 소스 확인
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - name: 소스 버전과 태그 검증
+        id: version
+        env:
+          RELEASE_REF: ${{ github.ref }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $source = Get-Content engine/src/mighty/ApplicationInfo.java -Raw
+          $match = [regex]::Match($source, 'VERSION\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"')
+          if (!$match.Success) { throw '엔진 버전을 읽을 수 없습니다.' }
+          $version = $match.Groups[1].Value
+          if ($env:RELEASE_REF -ne "refs/tags/v$version" -or $env:RELEASE_TAG -ne "v$version") {
+            throw 'ApplicationInfo.VERSION과 일치하는 v버전 태그에서 실행하세요.'
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Java 17 준비
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: |
+            engine/**/*.gradle
+            engine/gradle/wrapper/gradle-wrapper.properties
+            bot/**/*.gradle
+
+      - name: 봇 검사와 배포 파일 생성
+        run: |
+          & ./engine/gradlew.bat -p engine :releaseBot -PbotOnly --no-daemon --console=plain
+          if ($LASTEXITCODE -ne 0) { throw '봇 검사 또는 배포 빌드에 실패했습니다.' }
+
+      - name: 완성된 배포 공개
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: ./bot/publish_release.ps1 -Version $env:RELEASE_VERSION

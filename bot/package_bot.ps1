@@ -1,6 +1,9 @@
 ﻿param([string]$Jdk = $env:JAVA_HOME, [string]$ManifestUrl = $env:MIGHTY_UPDATE_MANIFEST, [switch]$UseBuiltJars)
 $ErrorActionPreference = 'Stop'
 if (!$Jdk) { throw '빌드에 사용할 JDK 경로를 -Jdk로 지정하세요.' }
+# 배포 주소는 코드와 함께 관리합니다. 별도 주소를 지정하면 그 주소를 우선합니다.
+$updateSource = ConvertFrom-StringData ([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'update-source.properties')))
+if (!$ManifestUrl) { $ManifestUrl = $updateSource.manifestUrl }
 $engine = Join-Path $PSScriptRoot '../engine'
 if (!$UseBuiltJars) {
     $env:JAVA_HOME = $Jdk
@@ -25,7 +28,12 @@ New-Item -ItemType Directory -Path $feed -Force | Out-Null
 $asset = "bot-bridge-$version.jar"
 Copy-Item -LiteralPath $jar -Destination (Join-Path $feed $asset) -Force
 $hash = (Get-FileHash (Join-Path $feed $asset) -Algorithm SHA256).Hash.ToLowerInvariant()
-@("version=$version", "jar=$asset", "sha256=$hash") | Set-Content -Encoding ASCII (Join-Path $feed 'latest.properties')
+# 버전 안내 확인과 다운로드 사이에 최신 배포가 바뀌어도 같은 버전의 파일을 받습니다.
+$assetReference = $asset
+if ($ManifestUrl -eq $updateSource.manifestUrl) {
+    $assetReference = "$($updateSource.releaseBaseUrl)/v$version/$asset"
+}
+@("version=$version", "jar=$assetReference", "sha256=$hash") | Set-Content -Encoding ASCII (Join-Path $feed 'latest.properties')
 Copy-Item -LiteralPath $jar -Destination $inputDir
 @("bundledVersion=$version", "manifestUrl=$ManifestUrl") | Set-Content -Encoding ASCII (Join-Path $inputDir 'updates.properties')
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'launcher/build/libs/bot-launcher.jar') -Destination $inputDir
