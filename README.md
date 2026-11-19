@@ -2,8 +2,6 @@
 
 Tabletop Simulator에서 마이티 AI를 사용할 수 있도록 연결하는 로컬 봇입니다. 비딩, 바닥 정리, 프렌드 선택과 카드 플레이를 판단합니다.
 
-**Windows x64용이며 Java가 포함되어 있어 별도 설치가 필요 없습니다.** 봇 연결을 지원하는 마이티 맵은 별도로 준비해야 합니다.
-
 ## 다운로드
 
 **[최신 실행기 다운로드](https://github.com/JJong2001/mighty-bot/releases/latest)**
