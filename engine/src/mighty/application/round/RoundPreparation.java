@@ -21,6 +21,19 @@ public final class RoundPreparation {
     this.friendPolicy = friendPolicy;
   }
 
+  public <E extends Exception> void beforeKitty(
+      RoundState round,
+      Submission<Bid, E> revise
+  ) throws E {
+    var actor = round.currentSeat().orElseThrow();
+    var history = round.contractHistory();
+    Bid selected = planner.beforeKittyContract(round.beforeKittyHand(actor), history.get(0),
+        round.contract());
+    if (!selected.equals(round.contract())) {
+      revise.apply(selected);
+    }
+  }
+
   public <E extends Exception> void discard(
       RoundState round,
       Submission<Bid, E> revise,

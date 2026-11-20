@@ -94,13 +94,33 @@ class RuleBiddingPolicyTest {
   }
 
   @Test
-  @DisplayName("첫 입찰은 경쟁 상한을 그대로 내지 않는다")
+  @DisplayName("노기루 성공각이 보이면 기루 평균보다 먼저 닷노 운영을 연다")
   void doesNotOpenAtCeiling() {
     BiddingAction action = new RuleBiddingPolicy().choose(
         new BiddingView(new Seat(0), hand(), 40, state()));
     assertInstanceOf(BidOffer.class, action);
     assertEquals(new BidOffer(new Bid(15, Trump.NO_TRUMP)), action);
     assertNotEquals(16, ((BidOffer) action).bid().points());
+  }
+
+  @Test
+  @DisplayName("기루와 노기루의 기대 명목 점수 비교는 보유 칩에 따라 바뀌지 않는다")
+  void nominalBidChoiceDoesNotDependOnChipBalance() {
+    var policy = new RuleBiddingPolicy();
+    BiddingAction shortStack = policy.choose(new BiddingView(new Seat(0), hand(), 6, state()));
+    BiddingAction deepStack = policy.choose(new BiddingView(new Seat(0), hand(), 40, state()));
+    assertEquals(new BidOffer(new Bid(15, Trump.NO_TRUMP)), shortStack);
+    assertEquals(deepStack, shortStack);
+  }
+
+  @Test
+  @DisplayName("노기루 각이 없는 마이티 보유 패는 조커를 통제하는 기루 경로를 택한다")
+  void selectsMightyControlledTrumpWhenNoTrumpHasNoSuccessLine() {
+    var owned = mighty.data.CardParser.parseList("SA SJ S8 S3 DJ D5 D4 D2 H10 C4");
+    var policy = new RuleBiddingPolicy();
+
+    assertEquals(new BidOffer(new Bid(15, Trump.DIAMOND)),
+        policy.choose(new BiddingView(new Seat(0), owned, 40, state())));
   }
 
   @Test

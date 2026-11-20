@@ -2380,4 +2380,50 @@ class OperatingPlanTest {
     assertEquals(card("D3"), policy.choose(v).card());
   }
 
+
+  @Test
+  @DisplayName("두 점이 필요한 야당은 주공 뒤의 추가 득점을 보고 한 점으로 선출한다")
+  void leadsOnePointWhenAnotherCanComeAfterDeclarer() {
+    var view = twoPointPressure(0, 17, "C10 C7 H8 H9 H7 D3 S2 D4", List.of());
+    assertEquals(card("C10"), policy.choose(view).card());
+
+    var needsThree = twoPointPressure(0, 16, "C10 C7 H8 H9 H7 D3 S2 D4", List.of());
+    assertNotEquals(card("C10"), policy.choose(needsThree).card());
+  }
+
+  @Test
+  @DisplayName("앞 야당이 점수를 냈고 주공 뒤에 추가 점수가 가능하면 숫자로 따른다")
+  void leavesSecondPointThreatBehindDeclarer() {
+    var view = twoPointPressure(1, 17, "CQ C8 HQ H9 S3 D3 D4 D5", List.of(p(0, "CA")));
+    assertEquals(card("C8"), policy.choose(view).card());
+
+    var noPointBehind =
+        twoPointPressure(1, 17, "C10 CJ CQ CK C8 D3 D4 S3", List.of(p(0, "CA")));
+    assertEquals(card("C10"), policy.choose(noPointBehind).card());
+  }
+
+  @Test
+  @DisplayName("앞 야당이 물패를 내면 후수가 부기루 수비 여부에 따라 첫 압박을 맡는다")
+  void choosesWhetherToStartPressureFromTheSecondSeat() {
+    var current = List.of(p(0, "C7"));
+    var expendable = twoPointPressure(1, 17, "D10 D4 H6 H7 H8 H9 S3 S4", current);
+    assertEquals(card("D10"), policy.choose(expendable).card());
+
+    var guard = twoPointPressure(1, 17, "HA HQ HJ H9 H8 H7 D4 S3", current);
+    assertEquals(card("D4"), policy.choose(guard).card());
+  }
+
+  private static View twoPointPressure(int self, int contract, String hand, List<PublicPlay> trick) {
+    var opening = row(1, Trump.SPADE, p(2, "H10"), p(3, "H3"), p(4, "H2"),
+        p(0, "HK"), p(1, "H4"));
+    var establishesVoid = row(2, Trump.SPADE, p(0, "C9"), p(1, "C4"), p(2, "D2"),
+        p(3, "C5"), p(4, "C6"));
+    // 주공이 비딩에서 공개한 하트는 부기루 수비 여부를 판단하는 근거입니다.
+    View observation = view(self, 2, Trump.SPADE, contract, hand, "", SpecialFriend.NONE,
+        NoFriend.INSTANCE, List.of(opening, establishesVoid), trick);
+    var context = new Context(observation.context().playOrder(), new Seat(2), NoFriend.INSTANCE,
+        observation.context().history(), List.of(new Bid(15, Trump.HEART), observation.contract()));
+    return ObservationFactory.create(observation.self(), observation.privateInfo(),
+        observation.contract(), observation.friendSelection(), context, trick);
+  }
 }

@@ -150,6 +150,15 @@ public final class RoundState {
   }
 
   /**
+   * 바닥을 들기 전 주공에게만 자기 열 장을 제공합니다.
+   */
+  public List<Card> beforeKittyHand(Seat viewer) {
+    requirePhase(GamePhase.BEFORE_KITTY);
+    requireDeclarer(viewer);
+    return List.copyOf(hands.get(viewer));
+  }
+
+  /**
    * 완료된 구의 공개 기록을 변경 불가능한 목록으로 반환합니다.
    */
   public List<PublicTrick> history() {

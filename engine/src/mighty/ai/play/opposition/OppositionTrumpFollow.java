@@ -3,6 +3,7 @@ package mighty.ai.play.opposition;
 import java.util.*;
 import mighty.ai.play.*;
 import mighty.game.action.*;
+import mighty.game.friend.NoFriend;
 import mighty.game.observation.View;
 import mighty.game.rule.Rules;
 import mighty.model.*;
@@ -20,9 +21,9 @@ final class OppositionTrumpFollow {
     }
     List<Action> low = trumps.stream().filter(a -> a.card().points() == 0).toList();
     var winner = facts.currentWinner().orElseThrow();
-    boolean specialOutside =
-        facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
-            || facts.cards().outsideCards().contains(Joker.INSTANCE);
+    boolean specialOutside = facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
+        || facts.cards().outsideCards().contains(Joker.INSTANCE);
+    boolean specialBehind = specialCanBeHeldBehind(view, facts);
     boolean pressureAlready = winner.action().card().points() > 0
         || winner.action().card().equals(Rules.mighty(view.contract().trump()))
         || winner.action().card() instanceof Joker;
@@ -64,14 +65,16 @@ final class OppositionTrumpFollow {
       return new PlayDecision(PlaySupport.cheapest(low, view),
           "동료가 이미 점수 기루로 압박하므로 높은 수비를 겹치지 않습니다.");
     }
-    // 장수가 짧은 야당 한 명이 압박합니다. A는 후속 실제 승리 자원이므로 제외합니다.
-    if (!low.isEmpty() && !pressureAlready && specialOutside && trumps.size() <= 2) {
+    // 기루가 두 장이면 T/J/Q를 희생해 뒤 여당의 미소모 특수카드를 끌어냅니다.
+    if (!low.isEmpty() && !pressureAlready && specialBehind && trumps.size() == 2) {
       var pressure = trumps.stream().filter(a -> a.card().points() > 0)
-          .filter(a -> ((StandardCard) a.card()).rank() != Rank.ACE)
+          .filter(a -> ((StandardCard) a.card()).rank() == Rank.TEN
+              || ((StandardCard) a.card()).rank() == Rank.JACK
+              || ((StandardCard) a.card()).rank() == Rank.QUEEN)
           .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
       if (pressure.isPresent()) {
         return new PlayDecision(pressure.get(),
-            "짧은 점수 기루 한 장으로 특수카드 사용을 압박하고 다른 야당의 수비를 남깁니다.");
+            "기루 두 장 중 10·J·Q를 희생해 뒤 여당의 마이티·조커를 소진시키려 합니다.");
       }
     }
     // A/K 고정 분기 대신 Q/J도 같은 장수와 남은 위협 수로 수비 가치를 판단합니다.
@@ -87,6 +90,25 @@ final class OppositionTrumpFollow {
       }
     }
     return new PlayDecision(PlaySupport.cheapest(trumps, view), "따라야 하는 기루 중 손실이 작은 카드부터 냅니다.");
+  }
+
+  private static boolean specialCanBeHeldBehind(View view, PlayFacts facts) {
+    var outside = facts.cards().outsideCards();
+    boolean mightyOutside = outside.contains(Rules.mighty(view.contract().trump()));
+    boolean jokerOutside = outside.contains(Joker.INSTANCE);
+    if (!mightyOutside && !jokerOutside) {
+      return false;
+    }
+    var knownFriend = facts.teams().friendSeat();
+    boolean friendUnrevealed = !(view.context().friendStatus() instanceof NoFriend)
+        && knownFriend.isEmpty();
+    return facts.remainingSeats().stream()
+        .filter(seat -> facts.cards().trumps().remainingHand(seat) > 0)
+        .filter(seat -> seat.equals(view.context().declarer())
+            || knownFriend.filter(seat::equals).isPresent()
+            || (friendUnrevealed && !seat.equals(view.context().declarer())))
+        .anyMatch(seat -> jokerOutside || (mightyOutside
+            && !facts.cards().isVoid(seat, Rules.mighty(view.contract().trump()).suit())));
   }
 
 }

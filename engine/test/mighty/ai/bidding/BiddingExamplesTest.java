@@ -19,7 +19,12 @@ import org.junit.jupiter.params.provider.MethodSource;
 class BiddingExamplesTest {
 
   private record Example(int number, String hand, Trump trump, int opening, int ceiling,
-                         boolean voluntary) {
+                         boolean voluntary, Trump selectedTrump) {
+
+    private Example(int number, String hand, Trump trump, int opening, int ceiling,
+        boolean voluntary) {
+      this(number, hand, trump, opening, ceiling, voluntary, trump);
+    }
 
   }
 
@@ -64,7 +69,7 @@ class BiddingExamplesTest {
   @MethodSource("examples")
   @DisplayName("제시된 10개 패의 첫 입찰과 후보별 상한을 비교한다")
   void opensAndAssessesExamples(Example example) {
-    assertEquals(new BidOffer(new Bid(example.opening(), example.trump())),
+    assertEquals(new BidOffer(new Bid(example.opening(), example.selectedTrump())),
         choose(example.hand(), null));
     BidAssessment assessment = assessment(example.hand(), example.trump());
     assertEquals(example.voluntary(), assessment.canCompete());
@@ -76,7 +81,7 @@ class BiddingExamplesTest {
   @DisplayName("강제 첫 입찰과 자발적 경쟁을 구분하고 상한을 넘지 않는다")
   void competesOnlyWhenSupported(Example example) {
     BiddingAction afterLowBid = choose(example.hand(), new Bid(13, Trump.DIAMOND));
-    assertEquals(example.voluntary() ? new BidOffer(new Bid(example.opening(), example.trump()))
+    assertEquals(example.voluntary() ? new BidOffer(new Bid(example.opening(), example.selectedTrump()))
             : BidPass.INSTANCE,
         afterLowBid);
     assertEquals(BidPass.INSTANCE,

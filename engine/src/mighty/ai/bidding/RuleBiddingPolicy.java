@@ -18,8 +18,20 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
 
   private final RuleDealMissPolicy dealMiss = new RuleDealMissPolicy();
   private final BiddingHandEvaluator evaluator = new BiddingHandEvaluator();
+  private final BidExpectedScoreEvaluator expectedScores = new BidExpectedScoreEvaluator();
 
-  private record Candidate(BidOffer offer, BidAssessment assessment) {
+  private record Candidate(BidOffer offer, BidAssessment assessment, int fatalBackruns, int backruns,
+                           double expectedScore) {
+
+    int highestSuccessScore() {
+      int contractCeiling = assessment.ceilingPoints();
+      int base = Math.max(0, contractCeiling - 6);
+      int multiplier = assessment.trump() == Trump.NO_TRUMP ? 2 : 1;
+      if (contractCeiling == Bid.MAX_POINTS) {
+        multiplier *= 2;
+      }
+      return base * multiplier;
+    }
 
   }
 
@@ -32,18 +44,32 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     BiddingHand hand = BiddingHand.from(view.hand());
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
-    List<Candidate> candidates = evaluator.assess(hand).stream()
-        .filter(BidAssessment::canCompete)
-        .flatMap(assessment -> legal.stream()
-            .filter(offer -> offer.bid().trump() == assessment.trump())
-            .filter(offer -> offer.bid().points() >= assessment.openingPoints()
-                && offer.bid().points() <= assessment.ceilingPoints())
-            .min(Comparator.comparingInt(offer -> offer.bid().points()))
-            .map(offer -> new Candidate(offer, assessment)).stream()).toList();
-    if (!candidates.isEmpty()) {
-      return candidates.stream().max(Comparator
-              .<Candidate>comparingInt(candidate -> candidate.assessment().preference())
-              .thenComparingInt(candidate -> -candidate.offer().bid().points()))
+    List<BidAssessment> assessments = evaluator.assess(hand).stream()
+        .filter(BidAssessment::canCompete).toList();
+    List<Candidate> noTrump = candidates(hand, assessments, legal, Trump.NO_TRUMP,
+        view.playerScore(), false);
+    if (!noTrump.isEmpty()) {
+      // 노기루 성공 운영이 보이면 바닥 뒤 기루 전환 선택권을 남기고 우선 비딩합니다.
+      return noTrump.stream().max(Comparator
+          .comparingInt(Candidate::highestSuccessScore)
+          .thenComparingInt(candidate -> candidate.assessment().preference())
+          .thenComparingInt(candidate -> -candidate.offer().bid().points()))
+          .orElseThrow().offer();
+    }
+    List<Candidate> suited = assessments.stream()
+        .filter(assessment -> assessment.trump() != Trump.NO_TRUMP)
+        .flatMap(assessment -> candidates(hand, List.of(assessment), legal,
+            assessment.trump(), view.playerScore(), true).stream()).toList();
+    if (!suited.isEmpty()) {
+      // 노기루 각이 없을 때만 현재 잔액 기준 백런 종료 표본을 계산해 기루 후보를 비교합니다.
+      return suited.stream().min(Comparator
+          .comparingInt(Candidate::fatalBackruns)
+          .thenComparingInt(Candidate::backruns)
+          .thenComparing(Comparator.comparingInt(Candidate::highestSuccessScore).reversed())
+          .thenComparing(Comparator.comparingDouble(Candidate::expectedScore).reversed())
+          .thenComparing(Comparator.comparingInt(
+              (Candidate candidate) -> candidate.assessment().preference()).reversed())
+          .thenComparingInt(candidate -> candidate.offer().bid().points()))
           .orElseThrow().offer();
     }
     if (view.bidding().highestBid().isPresent()) {
@@ -54,6 +80,26 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
         .max(Comparator.<Trump>comparingInt(hand::trumpCount)
             .thenComparingInt(trump -> -trump.ordinal())).orElseThrow();
     return new BidOffer(new Bid(Bid.MIN_POINTS, longest));
+  }
+
+  private List<Candidate> candidates(BiddingHand hand, List<BidAssessment> assessments,
+      List<BidOffer> legal, Trump trump, int balance, boolean estimateRisk) {
+    return assessments.stream()
+        .filter(assessment -> assessment.trump() == trump)
+        .flatMap(assessment -> legal.stream()
+            .filter(offer -> offer.bid().trump() == assessment.trump())
+            .filter(offer -> offer.bid().points() >= assessment.openingPoints()
+                && offer.bid().points() <= assessment.ceilingPoints())
+            .min(Comparator.comparingInt(offer -> offer.bid().points()))
+            .map(offer -> {
+              var estimate = estimateRisk
+                  ? expectedScores.estimateDeclarerScore(hand, offer.bid(), balance)
+                  : new BidExpectedScoreEvaluator.ScoreEstimate(0, 0, 0, 0);
+              return new Candidate(offer, assessment, estimate.fatalBackruns(),
+                  estimate.backruns(),
+                  estimate.expectedDeclarerScore());
+            }).stream())
+        .toList();
   }
 
 }
