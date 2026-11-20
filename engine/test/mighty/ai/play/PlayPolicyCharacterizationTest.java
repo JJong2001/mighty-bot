@@ -30,6 +30,7 @@ import mighty.game.deal.DeckFactory;
 import mighty.game.friend.CardFriend;
 import mighty.game.friend.FriendSelection;
 import mighty.game.friend.SpecialFriend;
+import mighty.game.observation.View;
 import mighty.game.round.RoundState;
 import mighty.game.rule.Rules;
 import mighty.game.trick.PublicPlay;
@@ -51,11 +52,47 @@ public class PlayPolicyCharacterizationTest {
   private static final String SUPPORT_ORDER_DELTAS = "/play-policy-support-order-deltas.tsv";
   private static final String MIGHTY_SUPPORT_DELTAS = "/play-policy-mighty-support-deltas.tsv";
   private static final String RECOVERY_DELTAS = "/play-policy-joint-special-recovery-deltas.tsv";
+  private static final String APPROVED_ACTION_DELTAS = "/play-policy-approved-action-deltas.tsv";
+  private static final String EXPLANATION_DELTAS = "/play-policy-explanation-deltas.tsv";
 
-  private record Scenario(Trump trump, int friend, boolean sixSeats, int seed) {
+  static record Scenario(Trump trump, int friend, boolean sixSeats, int seed) {
 
     String id() {
       return trump + ":friend=" + friend + ":six=" + sixSeats + ":seed=" + seed;
+    }
+
+    View viewAtTurn(int targetTurn) {
+      var seats = IntStream.range(0, sixSeats ? 6 : 5).mapToObj(Seat::new).toList();
+      var active = new HashSet<>(seats);
+      if (sixSeats) {
+        active.remove(new Seat(2));
+      }
+      var order = PlayOrder.from(new TableLayout(
+          sixSeats ? GameMode.SIX_PLAYER : GameMode.FIVE_PLAYER, seats), active);
+      List<Card> deck = new ArrayList<>(DeckFactory.create());
+      Collections.shuffle(deck, new Random(seed));
+      var hands = new HashMap<Seat, List<Card>>();
+      for (int index = 0; index < 5; index++) {
+        hands.put(order.seats().get(index), List.copyOf(deck.subList(index * 10, index * 10 + 10)));
+      }
+      var declarer = order.seats().get(seed % 5);
+      var round = RoundState.start(order, new BiddingResult(declarer, new Bid(15, trump)), hands,
+          List.copyOf(deck.subList(50, 53)));
+      round.takeKitty(declarer);
+      round.discard(declarer, List.copyOf(deck.subList(50, 53)));
+      FriendSelection selection = switch (friend) {
+        case 0 -> new CardFriend(Rules.mighty(trump));
+        case 1 -> new CardFriend(Joker.INSTANCE);
+        case 2 -> SpecialFriend.FIRST_TRICK;
+        default -> SpecialFriend.NONE;
+      };
+      round.chooseFriend(declarer, selection);
+      var policy = new RulePlayPolicy();
+      for (int turn = 1; turn < targetTurn; turn++) {
+        var view = round.currentView();
+        round.play(new PublicPlay(view.self(), policy.choose(view)));
+      }
+      return round.currentView();
     }
 
     String trace() throws Exception {
@@ -132,7 +169,8 @@ public class PlayPolicyCharacterizationTest {
     }
     // 원래 리팩토링 기준은 보존하고, 별도 검토한 전략 변경 배분만 명시적으로 덮습니다.
     for (String resource : List.of(STRATEGY_DELTAS, SUPPORT_DELTAS, DESCENDING_DELTAS,
-        SUPPORT_ORDER_DELTAS, MIGHTY_SUPPORT_DELTAS, RECOVERY_DELTAS)) {
+        SUPPORT_ORDER_DELTAS, MIGHTY_SUPPORT_DELTAS, RECOVERY_DELTAS,
+        APPROVED_ACTION_DELTAS)) {
       var deltas = getClass().getResourceAsStream(resource);
       assertNotNull(deltas, "전략 변경 검토 기준이 필요합니다. " + resource);
       var changedIds = new HashSet<String>();
@@ -144,6 +182,23 @@ public class PlayPolicyCharacterizationTest {
               .filter(i -> expected.get(i).startsWith(id + "\t")).findFirst().orElseThrow();
           expected.set(index, line);
         }
+      }
+    }
+    var explanations = getClass().getResourceAsStream(EXPLANATION_DELTAS);
+    assertNotNull(explanations, "설명 문구 변경 기준이 필요합니다.");
+    var explainedIds = new HashSet<String>();
+    try (var reader = new BufferedReader(
+        new InputStreamReader(explanations, StandardCharsets.UTF_8))) {
+      for (String line : reader.lines().toList()) {
+        String[] delta = line.split("\t");
+        assertEquals(2, delta.length, "설명 기준은 시나리오 ID와 이유 해시만 포함합니다.");
+        String id = delta[0];
+        org.junit.jupiter.api.Assertions.assertTrue(explainedIds.add(id), "중복 설명 기준: " + id);
+        int index = IntStream.range(0, expected.size())
+            .filter(i -> expected.get(i).startsWith(id + "\t")).findFirst().orElseThrow();
+        String[] fields = expected.get(index).split("\t");
+        fields[2] = delta[1];
+        expected.set(index, String.join("\t", fields));
       }
     }
     var scenarios = scenarios();

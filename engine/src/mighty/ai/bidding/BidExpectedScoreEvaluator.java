@@ -11,6 +11,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.IntStream;
 import mighty.ai.play.RulePlayPolicy;
+import mighty.ai.preparation.PreparationPlan;
+import mighty.ai.preparation.PreparationPlanner;
 import mighty.ai.preparation.RuleDiscardPolicy;
 import mighty.ai.preparation.RuleFriendPolicy;
 import mighty.application.round.RoundService;
@@ -36,7 +38,9 @@ import mighty.model.Card;
 public final class BidExpectedScoreEvaluator {
 
   private static final int SAMPLES = 32;
-  private static final Map<String, Double> CACHE = new ConcurrentHashMap<>();
+  private static final int KITTY_SAMPLES = 4;
+  private static final int DEALS_PER_KITTY = SAMPLES / KITTY_SAMPLES;
+  private static final Map<String, SimulationSummary> CACHE = new ConcurrentHashMap<>();
   private static final Map<String, Double> AWARD_CACHE = new ConcurrentHashMap<>();
   private static final List<Seat> SEATS = IntStream.range(0, GameMode.PLAYING_PLAYER_COUNT)
       .mapToObj(Seat::new).toList();
@@ -45,6 +49,7 @@ public final class BidExpectedScoreEvaluator {
   private static final Seat DECLARER = SEATS.get(0);
   private static final RoundService ROUND_SERVICE = new RoundService(
       new RuleDiscardPolicy(), new RuleFriendPolicy(), new RulePlayPolicy());
+  private static final PreparationPlanner PREPARATION_PLANNER = new PreparationPlanner();
 
   public double expectedDeclarerScore(BiddingHand hand, Bid contract) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
@@ -53,11 +58,34 @@ public final class BidExpectedScoreEvaluator {
     }
     String handKey = own.stream().map(Card::toCode).sorted().toList().toString();
     String key = handKey + "/" + contract.points() + "/" + contract.trump();
+    return cachedEvaluation(own, handKey, key, contract).expectedDeclarerScore();
+  }
+
+  /**
+   * 실제 주공 잔액에서 백런이 즉시 게임 종료를 일으키는 표본 수와 평균 명목 정산을 제공합니다.
+   */
+  public ScoreEstimate estimateDeclarerScore(BiddingHand hand, Bid contract, int balance) {
+    List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+    if (own.size() != 10) {
+      return new ScoreEstimate(Double.NEGATIVE_INFINITY, SAMPLES, SAMPLES, SAMPLES);
+    }
+    String handKey = own.stream().map(Card::toCode).sorted().toList().toString();
+    String key = handKey + "/" + contract.points() + "/" + contract.trump();
+    SimulationSummary summary = cachedEvaluation(own, handKey, key, contract);
+    long backruns = summary.outcomes().stream().filter(SimulatedRound::backrun).count();
+    long fatalBackruns = summary.outcomes().stream()
+        .filter(outcome -> outcome.backrun() && balance + outcome.declarerSettlement() <= 0)
+        .count();
+    return new ScoreEstimate(summary.expectedDeclarerScore(), (int) fatalBackruns,
+        (int) backruns, summary.outcomes().size());
+  }
+
+  private static SimulationSummary cachedEvaluation(List<Card> own, String handKey, String key,
+      Bid contract) {
     if (CACHE.size() > 512) {
       CACHE.clear();
     }
-    return CACHE.computeIfAbsent(key,
-        ignored -> evaluate(own, contract, handKey.hashCode()));
+    return CACHE.computeIfAbsent(key, ignored -> evaluate(own, contract, handKey.hashCode()));
   }
 
   /**
@@ -95,29 +123,68 @@ public final class BidExpectedScoreEvaluator {
     });
   }
 
-  private static double evaluate(List<Card> own, Bid contract, long seed) {
+  private static SimulationSummary evaluate(List<Card> own, Bid contract, long seed) {
     Random random = new Random(seed);
-    int total = 0;
-    for (int sample = 0; sample < SAMPLES; sample++) {
-      RoundState round = createRound(own, contract, random);
-      RoundResult result = ROUND_SERVICE.playToEnd(round);
-      boolean declaredSolo = round.friendSelection().orElseThrow() == SpecialFriend.NONE;
-      total += RoundSettlement.nominal(result, declaredSolo).get(DECLARER);
+    List<SimulatedRound> outcomes = new ArrayList<>(SAMPLES);
+    for (int kittySample = 0; kittySample < KITTY_SAMPLES; kittySample++) {
+      List<Card> pool = new ArrayList<>(DeckFactory.create().stream()
+          .filter(card -> !own.contains(card)).toList());
+      Collections.shuffle(pool, random);
+      List<Card> kitty = List.copyOf(pool.subList(0, 3));
+      List<Card> opponentPool = List.copyOf(pool.subList(3, pool.size()));
+      RoundState preparationRound = createRound(own, contract, kitty, opponentPool);
+      preparationRound.takeKitty(DECLARER);
+      PreparationPlan preparation = PREPARATION_PLANNER.choose(
+          preparationRound.discardView(DECLARER), contract);
+      for (int deal = 0; deal < DEALS_PER_KITTY; deal++) {
+        List<Card> shuffledOpponents = new ArrayList<>(opponentPool);
+        Collections.shuffle(shuffledOpponents, random);
+        RoundState round = createRound(own, contract, kitty, shuffledOpponents);
+        round.takeKitty(DECLARER);
+        if (!preparation.contract().equals(round.contract())) {
+          round.reviseContract(DECLARER, preparation.contract());
+        }
+        round.discard(DECLARER, preparation.discarded());
+        round.chooseFriend(DECLARER, preparation.friend());
+        RoundResult result = ROUND_SERVICE.playToEnd(round);
+        boolean declaredSolo = preparation.friend() == SpecialFriend.NONE;
+        int declarerSettlement = RoundSettlement.nominal(result, declaredSolo).get(DECLARER);
+        boolean backrun = !result.succeeded()
+            && result.teamPoints() <= result.contract().points() - 10;
+        outcomes.add(new SimulatedRound(declarerSettlement, backrun));
+      }
     }
-    return (double) total / SAMPLES;
+    return new SimulationSummary(outcomes);
   }
 
-  private static RoundState createRound(List<Card> own, Bid contract, Random random) {
-    List<Card> pool = new ArrayList<>(DeckFactory.create().stream()
-        .filter(card -> !own.contains(card)).toList());
-    Collections.shuffle(pool, random);
+  public record ScoreEstimate(double expectedDeclarerScore, int fatalBackruns, int backruns,
+                              int samples) {
 
-    List<Card> kitty = List.copyOf(pool.subList(0, 3));
+  }
+
+  private record SimulatedRound(int declarerSettlement, boolean backrun) {
+
+  }
+
+  private record SimulationSummary(List<SimulatedRound> outcomes) {
+
+    private SimulationSummary {
+      outcomes = List.copyOf(outcomes);
+    }
+
+    double expectedDeclarerScore() {
+      return outcomes.stream().mapToInt(SimulatedRound::declarerSettlement).average()
+          .orElse(Double.NEGATIVE_INFINITY);
+    }
+  }
+
+  private static RoundState createRound(List<Card> own, Bid contract, List<Card> kitty,
+      List<Card> opponentPool) {
     Map<Seat, List<Card>> hands = new HashMap<>();
     hands.put(DECLARER, own);
     for (int index = 1; index < SEATS.size(); index++) {
-      int start = 3 + (index - 1) * 10;
-      hands.put(SEATS.get(index), List.copyOf(pool.subList(start, start + 10)));
+      int start = (index - 1) * 10;
+      hands.put(SEATS.get(index), List.copyOf(opponentPool.subList(start, start + 10)));
     }
     return RoundState.start(ORDER, new BiddingResult(DECLARER, contract), hands, kitty);
   }

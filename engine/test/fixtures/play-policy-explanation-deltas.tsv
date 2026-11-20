@@ -1,0 +1,4 @@
+SPADE:friend=3:six=false:seed=29	d8e1cb274412ae69c7566dd4c26f1f9a08ba2e0692b0b7727df237b5fb1684ab
+SPADE:friend=3:six=true:seed=29	d8e1cb274412ae69c7566dd4c26f1f9a08ba2e0692b0b7727df237b5fb1684ab
+HEART:friend=2:six=false:seed=3	cb04b268ac237ddab8ad1c55343266507b9973015841f82fbc00d7c67bf799ad
+HEART:friend=2:six=true:seed=3	cb04b268ac237ddab8ad1c55343266507b9973015841f82fbc00d7c67bf799ad
