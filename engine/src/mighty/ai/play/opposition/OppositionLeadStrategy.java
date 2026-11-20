@@ -46,7 +46,7 @@ final class OppositionLeadStrategy {
       return new PlayDecision(PlaySupport.cheapest(legal, view), "다른 문양의 합법 리드가 없어 강제로 기루를 냅니다.");
     }
     List<Action> ordinary = PlaySupport.ordinary(side, view);
-    var failurePressure = ContractFailureLead.choose(view, facts, ordinary);
+    var failurePressure = ContractFailurePressure.lead(view, facts, ordinary);
     if (failurePressure.isPresent()) {
       return failurePressure.get();
     }

@@ -35,6 +35,10 @@ final class OppositionFollowStrategy {
     if (decisive.isPresent()) {
       return new PlayDecision(decisive.get(), "현재 성패와 남은 공격 기회를 고려해 확보된 야당 승리에 점수를 지원합니다.");
     }
+    var failurePressure = ContractFailurePressure.follow(view, facts, legal);
+    if (failurePressure.isPresent()) {
+      return failurePressure.get();
+    }
     var securedSide = OppositionRuffTiming.keepSecuredSide(view, facts, legal);
     if (securedSide.isPresent()) {
       return securedSide.get();
