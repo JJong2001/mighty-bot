@@ -3,7 +3,6 @@ package mighty.ai.play;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import mighty.game.Role;
 import mighty.game.action.Action;
 import mighty.game.observation.View;
 import mighty.model.StandardCard;
@@ -37,20 +36,9 @@ public final class RuffPlan {
     if (ruffs.isEmpty()) {
       return Optional.empty();
     }
-    // 마지막 구에서는 장수로 상위를 버틸 수 없으므로 이번 간에 점수를 처리합니다.
-    if (view.role() == Role.DECLARER && view.trickNumber().value() == 9
-        && ruffs.stream().anyMatch(action -> action.card().points() == 0)) {
-      var exposed = ruffs.stream().filter(action -> action.card().points() > 0)
-          .filter(action -> facts.cards().trumps().outside().stream().anyMatch(higher ->
-              higher.rank().value() > ((StandardCard) action.card()).rank().value()))
-          .toList();
-      if (!exposed.isEmpty()) {
-        return Optional.of(PlaySupport.highest(exposed));
-      }
-    }
     TrumpSurvival survival = new TrumpSurvival(view, facts);
     var exposedPoints = ruffs.stream().filter(a -> a.card().points() > 0)
-        .filter(a -> !survival.survives((StandardCard) a.card())).toList();
+        .filter(a -> !survival.canPreserveWhenRuffing((StandardCard) a.card())).toList();
     if (!exposedPoints.isEmpty()) {
       return exposedPoints.stream()
           .max(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));

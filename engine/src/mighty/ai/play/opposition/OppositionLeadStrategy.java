@@ -16,6 +16,8 @@ import mighty.model.StandardCard;
  */
 final class OppositionLeadStrategy {
 
+  private static final int POINT_LOAD_FOR_PRESSURE = 3;
+
   private OppositionLeadStrategy() {
   }
 
@@ -50,15 +52,10 @@ final class OppositionLeadStrategy {
     if (failurePressure.isPresent()) {
       return failurePressure.get();
     }
-    var pressureLead = pressureKnownVoid(view, facts, ordinary);
+    var pressureLead = leadPointPressure(view, facts, ordinary);
     if (pressureLead.isPresent()) {
       return new PlayDecision(pressureLead.get(),
-          "주공이 비운 문양의 남은 점수로 압박해 물패 한 장을 공짜로 털지 못하게 합니다.");
-    }
-    var pointLead = leadExcessPoints(view, facts, ordinary);
-    if (pointLead.isPresent()) {
-      return new PlayDecision(pointLead.get(),
-          "점수가 많이 남아 뒤 야당이 받을 수 있는 문양부터 점수로 압박합니다.");
+          "수비에 필요 없는 점수가 많이 남아 한 점을 먼저 걸고 주공의 흘리기와 간 선택을 압박합니다.");
     }
     var development = DevelopmentAttack.choose(view, facts, ordinary);
     if (development.isPresent()) {
@@ -82,38 +79,20 @@ final class OppositionLeadStrategy {
         "탈기 근거 없는 기루 리드는 피하고 사이드로 공격합니다.");
   }
 
-  private static java.util.Optional<Action> leadExcessPoints(View view, PlayFacts facts,
+  private static java.util.Optional<Action> leadPointPressure(View view, PlayFacts facts,
       List<Action> ordinary) {
-    if (view.hand().stream().mapToInt(card -> card.points()).sum() < 3) {
+    if (view.hand().stream().mapToInt(card -> card.points()).sum() < POINT_LOAD_FOR_PRESSURE) {
       return java.util.Optional.empty();
     }
     var pressure = new DeclarerPressure(view, facts);
     return ordinary.stream().filter(action -> action.card().points() > 0)
         .map(action -> (mighty.game.action.StandardPlay) action)
         .filter(action -> !action.call() && !pressure.defense(action.card()))
-        .filter(action -> facts.isMasterLead(action) || view.context().playOrder().seats().stream()
-            .filter(seat -> !seat.equals(view.self()) && facts.teams().isAlly(seat))
-            .anyMatch(seat -> facts.cards().isVoid(seat, action.card().suit())
-                && facts.cards().trumps().expectedCount(seat, facts) > 0.5))
-        .max(Comparator.comparingInt(action -> action.card().rank().value()))
+        // 동료의 승리를 확정해야만 걸 수 있는 점수가 아닙니다. 수비 가치는 별도로 남깁니다.
+        .min(Comparator.<mighty.game.action.StandardPlay>comparingInt(action ->
+                facts.cards().isVoid(view.context().declarer(), action.card().suit()) ? 0 : 1)
+            .thenComparingInt(action -> action.card().rank().value()))
         .map(Action.class::cast);
-  }
-
-  private static java.util.Optional<Action> pressureKnownVoid(View view, PlayFacts facts,
-      List<Action> ordinary) {
-    if (view.contract().trump() == mighty.model.Trump.NO_TRUMP) {
-      return java.util.Optional.empty();
-    }
-    return ordinary.stream().filter(action -> action.card().points() > 0)
-        .filter(action -> {
-          var card = (StandardCard) action.card();
-          return facts.cards().isVoid(view.context().declarer(), card.suit())
-              && facts.cards().outsideCards().stream()
-              .noneMatch(outside -> outside instanceof StandardCard other
-                  && other.suit() == card.suit() && other.points() > 0
-                  && !other.equals(Rules.mighty(view.contract().trump())));
-        })
-        .max(Comparator.comparingInt(action -> ((StandardCard) action.card()).rank().value()));
   }
 
 }

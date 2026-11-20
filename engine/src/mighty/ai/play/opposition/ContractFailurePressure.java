@@ -23,7 +23,8 @@ import mighty.model.Trump;
  */
 final class ContractFailurePressure {
 
-  private ContractFailurePressure() {}
+  private ContractFailurePressure() {
+  }
 
   static Optional<PlayDecision> lead(View view, PlayFacts facts, List<Action> ordinary) {
     int needed = pointsToDefeat(view, facts);
@@ -35,12 +36,12 @@ final class ContractFailurePressure {
         .map(action -> (StandardPlay) action)
         .filter(action -> facts.cards().isVoid(view.context().declarer(), action.card().suit()))
         .filter(action -> needed == 1 || mayAddPointBehindDeclarer(view, facts,
-                Rules.conditionsFor(view.contract().trump(), view.trickNumber(), action),
-                action.card()))
+            Rules.conditionsFor(view.contract().trump(), view.trickNumber(), action),
+            action.card()))
         .min(Comparator.comparingInt(action -> action.card().rank().value()))
         .map(action -> new PlayDecision(action, needed == 1
             ? "공개 점수와 남은 점수의 보수적 상한상 이 점수를 받지 않으면 공약에 못 미칩니다. "
-                + "주공의 무기루 문양을 점수로 열어 기루 응수를 압박합니다."
+            + "주공의 무기루 문양을 점수로 열어 기루 응수를 압박합니다."
             : "주공 뒤 야당이 점수를 더하면 공약을 막을 수 있어 한 점으로 먼저 압박합니다."));
   }
 
@@ -96,8 +97,8 @@ final class ContractFailurePressure {
   }
 
   /**
-   * 주공이 흘렸을 때 뒤 동료가 점수로 잡거나 야당이 이기는 구에 점수를 실을 근거를 찾습니다.
-   * 미확인 카드는 바닥패나 다른 자리에 있을 수 있으므로 가능성 판단에만 씁니다.
+   * 주공이 흘렸을 때 뒤 동료가 점수로 잡거나 야당이 이기는 구에 점수를 실을 근거를 찾습니다. 미확인 카드는 바닥패나 다른 자리에 있을 수 있으므로 가능성 판단에만
+   * 씁니다.
    */
   private static boolean mayAddPointBehindDeclarer(
       View view, PlayFacts facts, TrickConditions conditions, Card winner) {
