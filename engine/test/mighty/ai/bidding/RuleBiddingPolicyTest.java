@@ -130,6 +130,37 @@ class RuleBiddingPolicyTest {
     assertEquals(BidPass.INSTANCE, policy.choose(new BiddingView(new Seat(1), owned, 40, ceiling)));
   }
 
+  @Test
+  void measuresSameSuitCompetitionUsingPublicBidAndActualFriendInEachDeal() {
+    var owned = mighty.data.CardParser.parseList("SA SK CK CQ CJ C7 C2 D5 H4 H2");
+    var hand = BiddingHand.from(owned);
+    for (var bid : List.of(new Bid(15, Trump.CLUB), new Bid(16, Trump.NO_TRUMP),
+        new Bid(16, Trump.DIAMOND))) {
+      var bidding = state().submit(new PublicBid(new Seat(0), new BidOffer(bid)));
+      var view = new BiddingView(new Seat(1), owned, 40, bidding);
+      var offers = LegalBiddingActions.bidAndPassActions(bidding).stream()
+          .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
+      assertTrue(ContestedSuitAuction.signal(view, hand, offers).isEmpty());
+    }
+    var signal = new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB)));
+    var auction = state().submit(signal);
+    var view = new BiddingView(new Seat(1), owned, 40, auction);
+    var counter = new BidOffer(new Bid(17, Trump.CLUB));
+    assertEquals(signal, ContestedSuitAuction.signal(view, hand, List.of(counter)).orElseThrow());
+    var comparison = ContestedSuitAuction.evaluate(view, signal, List.of(counter));
+    var outcome = comparison.estimates().get(counter);
+    var ally = outcome.bidderIsAlly();
+    var enemy = outcome.bidderIsOpponent();
+    assertEquals(32, ally.deals + enemy.deals);
+    assertTrue(ally.deals > 0 && enemy.deals > 0);
+    // 같은 패로 맞기루를 부르면 선입찰자가 야당인 배분에서 성공률과 내 정산점이 더 낮습니다.
+    assertTrue((long) enemy.successes * ally.deals < (long) ally.successes * enemy.deals);
+    assertTrue((long) enemy.settlement * ally.deals < (long) ally.settlement * enemy.deals);
+    assertTrue(comparison.estimates().get(BidPass.INSTANCE).total() > outcome.total());
+    assertEquals(BidPass.INSTANCE, comparison.choice());
+    assertEquals(comparison.choice(), new RuleBiddingPolicy().choose(view));
+  }
+
   private static List<Card> hand() {
     return List.of(new StandardCard(Suit.SPADE, Rank.ACE), new StandardCard(Suit.SPADE, Rank.KING),
         new StandardCard(Suit.SPADE, Rank.JACK), new StandardCard(Suit.SPADE, Rank.SEVEN),

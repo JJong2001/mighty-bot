@@ -60,6 +60,13 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     BiddingHand hand = BiddingHand.from(view.hand());
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
+    var contested = ContestedSuitAuction.signal(view, hand, legal);
+    if (contested.isPresent()) {
+      var alternatives = evaluator.assess(hand).stream().filter(BidAssessment::canCompete)
+          .flatMap(a -> candidates(List.of(a), legal, a.trump()).stream())
+          .map(Candidate::offer).toList();
+      return ContestedSuitAuction.evaluate(view, contested.get(), alternatives).choice();
+    }
     var route = HighNoTrumpPlan.find(hand);
     if (route.isPresent() && view.hand().size() == 10 && route.get().competitiveShape(hand)) {
       var plan = route.get();
