@@ -118,11 +118,17 @@ class RuleBiddingPolicyTest {
   @DisplayName("분산 AK와 조커의 일곱 구 자원은 닷노로 진입하고 엿노까지 경쟁한다")
   void scatteredTopRunsAndJokerCompeteToSixteenNoTrump() {
     var owned = mighty.data.CardParser.parseList("S5 DK DA H2 H8 HA C4 CK CA JK");
+    var hand = BiddingHand.from(owned);
+    assertEquals(5, FlexibleNoTrumpOpening.ordinaryWins(hand));
+    assertEquals(2, hand.ordinaryTopRunLength(Suit.CLUB, Trump.NO_TRUMP));
+    assertTrue(FlexibleNoTrumpOpening.supportedBySpreadTops(hand, 16));
     var policy = new RuleBiddingPolicy();
     assertEquals(new BidOffer(new Bid(15, Trump.NO_TRUMP)),
         policy.choose(new BiddingView(new Seat(0), owned, 40, state())));
     var previous = state().submit(
         new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB))));
+    assertTrue(ContestedSuitAuction.signal(new BiddingView(new Seat(1), owned, 40, previous),
+        hand, List.of(new BidOffer(new Bid(16, Trump.NO_TRUMP)))).isEmpty());
     assertEquals(new BidOffer(new Bid(16, Trump.NO_TRUMP)),
         policy.choose(new BiddingView(new Seat(1), owned, 40, previous)));
     var ceiling = state().submit(
@@ -138,9 +144,8 @@ class RuleBiddingPolicyTest {
         new Bid(16, Trump.DIAMOND))) {
       var bidding = state().submit(new PublicBid(new Seat(0), new BidOffer(bid)));
       var view = new BiddingView(new Seat(1), owned, 40, bidding);
-      var offers = LegalBiddingActions.bidAndPassActions(bidding).stream()
-          .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
-      assertTrue(ContestedSuitAuction.signal(view, hand, offers).isEmpty());
+      var counter = new BidOffer(new Bid(17, Trump.CLUB));
+      assertTrue(ContestedSuitAuction.signal(view, hand, List.of(counter)).isEmpty());
     }
     var signal = new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB)));
     var auction = state().submit(signal);
@@ -159,6 +164,81 @@ class RuleBiddingPolicyTest {
     assertTrue(comparison.estimates().get(BidPass.INSTANCE).total() > outcome.total());
     assertEquals(BidPass.INSTANCE, comparison.choice());
     assertEquals(comparison.choice(), new RuleBiddingPolicy().choose(view));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"16, H3", "17, HQ"})
+  void pricesNoTrumpWhenOpponentBidTheRunningSuitWithoutALegalSuitedCandidate(int points,
+      String thirdHeart) {
+    var owned = mighty.data.CardParser.parseList("SK S5 S3 D10 HA HK H2 CK JK " + thirdHeart);
+    var hand = BiddingHand.from(owned);
+    var noTrump = new BidOffer(new Bid(points, Trump.NO_TRUMP));
+    assertEquals(16, SuitBidEvaluator.assess(CandidateResources.from(hand, Trump.HEART))
+        .ceilingPoints());
+    var signal = new PublicBid(new Seat(0), new BidOffer(new Bid(points, Trump.HEART)));
+    var view = new BiddingView(new Seat(1), owned, 40, state().submit(signal));
+    assertEquals(signal, ContestedSuitAuction.signal(view, hand, List.of(noTrump)).orElseThrow());
+    assertTrue(ContestedSuitAuction.signal(view, hand, List.of()).isEmpty());
+    var comparison = ContestedSuitAuction.evaluate(view, signal, List.of(noTrump));
+    var outcome = comparison.estimates().get(noTrump);
+    assertEquals(32, outcome.bidderIsAlly().deals + outcome.bidderIsOpponent().deals);
+    System.out.printf("%dNT 32판 정산 합계 %d, 패스 %d, 선택 %s%n", points, outcome.total(),
+        comparison.estimates().get(BidPass.INSTANCE).total(), comparison.choice());
+    assertEquals(comparison.choice(), new RuleBiddingPolicy().choose(view));
+    for (var other : List.of(new Bid(15, Trump.HEART), new Bid(points, Trump.CLUB))) {
+      var different = new BiddingView(new Seat(1), owned, 40,
+          state().submit(new PublicBid(new Seat(0), new BidOffer(other))));
+      assertTrue(ContestedSuitAuction.signal(different, hand, List.of(noTrump)).isEmpty());
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "SK SQ CA CK C4 C2 JK H2 H3 D5, DIAMOND, 17, NO_TRUMP",
+      "SA JK DA DK D4 D2 H2 H3 C2 S5, CLUB, 18, NO_TRUMP",
+      "DA HA HK H10 H7 H4 H2 C4 S5 S2, DIAMOND, 18, HEART"
+  })
+  void comparesSupportOrLimitedLossWithLettingBidderPlay(String cards, Trump standing,
+      int points, Trump candidateTrump) {
+    var owned = mighty.data.CardParser.parseList(cards);
+    int rival = points == 18 && candidateTrump == Trump.NO_TRUMP ? 18 : 17;
+    var bid = new Bid(rival, standing);
+    var auction = state().submit(new PublicBid(new Seat(0), new BidOffer(bid)));
+    var view = new BiddingView(new Seat(1), owned, 40, auction);
+    var hand = BiddingHand.from(owned);
+    var legal = LegalBiddingActions.bidAndPassActions(auction).stream()
+        .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
+    var comparison = ContestedSuitAuction.specialCompetition(view, hand, legal, List.of()).orElseThrow();
+    var candidate = new BidOffer(new Bid(points, candidateTrump));
+    var route = comparison.estimates().get(candidate);
+    assertNotNull(route);
+    assertEquals(32, route.bidderIsAlly().deals + route.bidderIsOpponent().deals);
+    var pass = comparison.estimates().get(BidPass.INSTANCE);
+    assertTrue(comparison.estimates().get(comparison.choice()).total() >= pass.total());
+    var actual = new RuleBiddingPolicy().choose(view);
+    System.out.printf("%s vs %s: offer=%d pass=%d allies=%d/%d action=%s%n", cards, bid,
+        route.total(), pass.total(), route.bidderIsAlly().deals, 32, actual);
+    assertEquals(comparison.choice(), actual);
+    if (candidateTrump == Trump.NO_TRUMP) {
+      assertTrue(route.bidderIsAlly().deals > 0 && route.bidderIsOpponent().deals > 0);
+      assertTrue(mighty.ai.planning.BidderSupportPlan.find(hand, view.self(), List.of(
+          new PublicBid(new Seat(0), new BidOffer(new Bid(16, standing))))).isEmpty());
+    }
+  }
+
+  @Test
+  void takesTheSmallerLossEvenIfContractUsuallyFails() {
+    var counter = new BidOffer(new Bid(18, Trump.HEART));
+    var pass = new ContestedSuitAuction.Estimate();
+    var defend = new ContestedSuitAuction.Estimate();
+    // 17♦를 주고 야당으로 10칩을 잃거나, 18♥ 주공으로 두 점 미달해 4칩을 잃는 예시입니다.
+    pass.bidderIsOpponent().settlement = -10;
+    defend.bidderIsOpponent().settlement = -4;
+    var choices = java.util.Map.<BiddingAction, ContestedSuitAuction.Estimate>of(
+        BidPass.INSTANCE, pass, counter, defend);
+    assertEquals(counter, ContestedSuitAuction.bestChoice(choices));
+    defend.bidderIsOpponent().settlement = -12;
+    assertEquals(BidPass.INSTANCE, ContestedSuitAuction.bestChoice(choices));
   }
 
   private static List<Card> hand() {

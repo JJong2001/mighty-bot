@@ -177,11 +177,45 @@ class HighNoTrumpTest {
     assertTrue(round.result().isPresent());
   }
 
+  @Test
+  void cashesTopsBeforeHandingLeadToClubBidder() {
+    var auction = List.of(new PublicBid(new Seat(1), new BidOffer(new Bid(18, Trump.CLUB))));
+    var bid = new Bid(18, Trump.NO_TRUMP);
+    var friend = new CardFriend(card("CA"));
+    var initial = "SA JK DA DK D4 D2 H2 H3 C2 S5";
+    var discards = "D10 C10 H10";
+    var before = PreparationPlanner.beforePublicBid(mighty.ai.bidding.BiddingHand.from(
+        CardParser.parseList(initial)), bid, bid, SELF, auction);
+    assertEquals(bid, before.orElseThrow());
+    var friendView = new FriendView(SELF, bid, CardParser.parseList(initial),
+        CardParser.parseList(discards), List.of(bid), auction);
+    assertEquals(friend, new RuleFriendPolicy().choose(friendView));
+    var policy = new RulePlayPolicy();
+    var first = view(0, 0, Trump.NO_TRUMP, 18, initial, discards, friend,
+        UnrevealedFriend.INSTANCE, List.of(), List.of());
+    assertEquals(card("DA"), policy.choose(withAuction(first, auction)).card());
+    var taken = List.of(
+        row(1, Trump.NO_TRUMP, p(0,"DA"), p(1,"D5"), p(2,"D6"), p(3,"D7"), p(4,"D8")),
+        row(2, Trump.NO_TRUMP, p(0,"DK"), p(1,"DJ"), p(2,"D9"), p(3,"D3"), p(4,"H4")));
+    var handover = view(0, 0, Trump.NO_TRUMP, 18, "SA JK D4 D2 H2 H3 C2 S5", discards,
+        friend, UnrevealedFriend.INSTANCE, taken, List.of());
+    assertEquals(card("C2"), policy.choose(withAuction(handover, auction)).card());
+    var complete = new ArrayList<>(taken);
+    complete.add(row(3, Trump.NO_TRUMP, p(0,"C2"), p(1,"CA"), p(2,"C3"), p(3,"C4"), p(4,"C5")));
+    var response = view(1, 0, Trump.NO_TRUMP, 18, "CK CQ CJ C7 C6 S3 H6", "",
+        friend, new RevealedFriend(new Seat(1)), complete, List.of());
+    assertEquals(card("CK"), policy.choose(withAuction(response, auction)).card());
+  }
+
   private static View withAuction(View base) {
+    return withAuction(base, CLUB_BID);
+  }
+
+  private static View withAuction(View base, List<PublicBid> auction) {
     var ctx = base.context();
     return new View(base.self(), base.privateInfo(), base.role(), base.contract(), base.friendSelection(),
         new Context(ctx.playOrder(), ctx.declarer(), ctx.friendStatus(), ctx.history(),
-            List.of(base.contract()), CLUB_BID), base.trick());
+            List.of(base.contract()), auction), base.trick());
   }
 
   @ParameterizedTest

@@ -3,6 +3,7 @@ package mighty.ai.preparation;
 import java.util.Objects;
 import mighty.ai.bidding.BiddingHand;
 import mighty.ai.planning.HighNoTrumpPlan;
+import mighty.ai.planning.BidderSupportPlan;
 import mighty.ai.planning.NoTrumpPlanner;
 import mighty.ai.planning.SuitFriendPlan;
 import mighty.ai.planning.distribution.NoTrumpDistributionEvaluator;
@@ -29,6 +30,11 @@ public final class RuleFriendPolicy implements FriendPolicy {
     }
     BiddingHand hand = BiddingHand.from(view.hand());
     if (view.contract().trump() == Trump.NO_TRUMP) {
+      var bidder = BidderSupportPlan.forContract(hand, view.self(), view.auction(), view.contract())
+          .filter(plan -> !owns(view, plan.called()));
+      if (bidder.isPresent()) {
+        return new CardFriend(bidder.get().called());
+      }
       if (view.contract().points() == 16 || view.contract().points() == 17
           || view.contract().points() == 20) {
         var support = HighNoTrumpPlan.find(hand)

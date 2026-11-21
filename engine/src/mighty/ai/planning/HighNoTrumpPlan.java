@@ -26,6 +26,15 @@ public record HighNoTrumpPlan(Suit primary, int tops, boolean mighty, boolean jo
             hand.hasMighty(Trump.NO_TRUMP), hand.hasJoker()));
   }
 
+  /** 입찰에서 예상하는 주력과 실제 주공이 운영할 주력을 같은 기준으로 정합니다. */
+  public static Optional<HighNoTrumpPlan> forContract(BiddingHand hand, Bid bid) {
+    if (bid.trump() != Trump.NO_TRUMP || (bid.points() != 16 && bid.points() != 17
+        && bid.points() != 20)) {
+      return Optional.empty();
+    }
+    return find(hand).filter(plan -> bid.points() != 20 || plan.canRun(hand));
+  }
+
   public int competitiveCeiling() {
     return joker && tops >= 3 ? 17 : 16;
   }

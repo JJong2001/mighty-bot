@@ -27,8 +27,10 @@ public final class RoundPreparation {
   ) throws E {
     var actor = round.currentSeat().orElseThrow();
     var history = round.contractHistory();
-    Bid selected = planner.beforeKittyContract(round.beforeKittyHand(actor), history.get(0),
-        round.contract());
+    var hand = round.beforeKittyHand(actor);
+    Bid selected = PreparationPlanner.beforePublicBid(mighty.ai.bidding.BiddingHand.from(hand),
+        history.get(0), round.contract(), actor, round.publicBids()).orElseGet(() ->
+        planner.beforeKittyContract(hand, history.get(0), round.contract()));
     if (!selected.equals(round.contract())) {
       revise.apply(selected);
     }

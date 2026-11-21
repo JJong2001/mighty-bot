@@ -187,8 +187,8 @@ public final class BotBridge {
         Bid fifteenNoTrump = new Bid(15, Trump.NO_TRUMP);
         Bid selected = award.equals(fifteenNoTrump) && current.equals(fifteenNoTrump)
             ? POLICIES.preparation().beforeKittyContract(hand, award, current)
-            : PreparationPlanner.highBeforeKitty(mighty.ai.bidding.BiddingHand.from(hand),
-                award, current).orElse(current);
+            : PreparationPlanner.beforePublicBid(mighty.ai.bidding.BiddingHand.from(hand),
+                award, current, self, auction(req, order)).orElse(current);
         out.put("type", "contract");
         out.put("points", selected.points());
         out.put("trump", trump(selected.trump()));

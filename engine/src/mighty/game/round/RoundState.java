@@ -35,6 +35,7 @@ public final class RoundState {
   private final Seat declarer;
   private final Bid awarded;
   private final List<PublicBid> publicBids;
+
   private Bid contract;
   private final List<Bid> contractHistory = new ArrayList<>();
   private final Map<Seat, List<Card>> hands;
@@ -103,6 +104,10 @@ public final class RoundState {
    */
   public Seat declarer() {
     return declarer;
+  }
+
+  public List<PublicBid> publicBids() {
+    return publicBids;
   }
 
   /**

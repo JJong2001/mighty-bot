@@ -3,6 +3,7 @@ package mighty.ai.preparation;
 import java.util.*;
 import mighty.ai.bidding.*;
 import mighty.ai.planning.HighNoTrumpPlan;
+import mighty.ai.planning.BidderSupportPlan;
 import mighty.game.*;
 import mighty.game.bidding.*;
 import mighty.game.observation.*;
@@ -73,6 +74,22 @@ public final class PreparationPlanner {
     if (isFifteenNoTrump(context)) {
       return compareAfterFifteenNoTrump(context, view.hand(), Optional.empty());
     }
+    var support = BidderSupportPlan.forContract(BiddingHand.from(view.hand()), view.self(),
+        view.auction(), view.contract());
+    if (support.isPresent() && !view.hand().contains(support.get().called())) {
+      // 묻은 뒤에도 연결 물패와 내 회수 자원이 남는 버리기 중 기존 평가가 가장 좋은 것을 택합니다.
+      for (var buried : discard.ranked(view, 286)) {
+        var kept = BiddingHand.from(retained(view.hand(), buried));
+        var preserved = BidderSupportPlan.forContract(kept, view.self(), view.auction(),
+            view.contract());
+        if (preserved.equals(support)) {
+          if (HighNoTrumpPlan.find(kept).filter(p -> p.canRun(kept)).isPresent()) {
+            break;
+          }
+          return plan(view.contract(), buried, new mighty.game.friend.CardFriend(support.get().called()));
+        }
+      }
+    }
     var high = highPreparation(view, awarded, history);
     if (high.isPresent()) {
       return high.get();
@@ -124,6 +141,11 @@ public final class PreparationPlanner {
       return context.current();
     }
     var kept = BiddingHand.from(view.hand());
+    var support = BidderSupportPlan.forContract(kept, view.self(), view.auction(), view.contract());
+    if (support.isPresent() && !view.discardedCards().contains(support.get().called())
+        && HighNoTrumpPlan.find(kept).filter(p -> p.canRun(kept)).isEmpty()) {
+      return view.contract();
+    }
     var route = highRoute(kept, awarded);
     if (route.isPresent()) {
       return retainedContract(route.get(), kept, awarded, view.contract(), GamePhase.FRIEND);
@@ -139,6 +161,14 @@ public final class PreparationPlanner {
       }
     }
     return best;
+  }
+
+  public static Optional<Bid> beforePublicBid(BiddingHand hand, Bid awarded, Bid current,
+      Seat self, List<PublicBid> auction) {
+    if (BidderSupportPlan.forContract(hand, self, auction, current).isPresent()) {
+      return Optional.of(current);
+    }
+    return highBeforeKitty(hand, awarded, current);
   }
 
   public static Optional<Bid> highBeforeKitty(BiddingHand hand, Bid awarded, Bid current) {

@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import mighty.ai.bidding.BiddingHand;
 import mighty.ai.planning.HighNoTrumpPlan;
+import mighty.ai.planning.BidderSupportPlan;
 import mighty.ai.play.PlayDecision;
 import mighty.ai.play.PlaySupport;
 import mighty.game.action.Action;
@@ -26,12 +27,30 @@ final class HighNoTrumpPlay {
       return Optional.empty();
     }
     var hand = BiddingHand.from(NoTrumpOperations.initialCards(position));
-    return HighNoTrumpPlan.find(hand).filter(p -> bid.points() != 20 || p.canRun(hand));
+    return HighNoTrumpPlan.forContract(hand, bid);
   }
 
   static Optional<PlayDecision> lead(DeclarerPosition position) {
-    var route = route(position);
     var view = position.view();
+    if (position.needsFriendCall() && view.contract().trump() == Trump.NO_TRUMP
+        && view.contract().points() >= 17 && !view.context().auction().isEmpty()) {
+      var bidder = BidderSupportPlan.forContract(BiddingHand.from(NoTrumpOperations.initialCards(position)),
+          view.self(), view.context().auction(), view.contract()).filter(p -> position.calls(p.called()));
+      if (bidder.isPresent()) {
+        var target = bidder.get().transfer();
+        var cash = position.ordinary().stream().filter(a -> ((StandardCard) a.card()).suit() != target)
+            .filter(a -> position.facts().isSuitTop(a.card())).toList();
+        if (!cash.isEmpty()) {
+          return Optional.of(new PlayDecision(PlaySupport.highest(cash),
+              "선입찰자에게 선을 넘기기 전에 내 독립 탑을 먼저 처리합니다."));
+        }
+        var transfer = low(position.inSuit(target), "선입찰 문양의 물패로 프렌드의 추가 승리를 연결합니다.");
+        if (transfer.isPresent()) {
+          return transfer;
+        }
+      }
+    }
+    var route = route(position);
     if (route.isEmpty() || !(view.friendSelection() instanceof CardFriend friend)) {
       return Optional.empty();
     }

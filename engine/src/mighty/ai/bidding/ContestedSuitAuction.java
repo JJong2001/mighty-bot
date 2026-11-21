@@ -2,13 +2,18 @@ package mighty.ai.bidding;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import mighty.ai.planning.BidderSupportPlan;
+import mighty.ai.planning.HighNoTrumpPlan;
+import mighty.ai.planning.NoTrumpPlanner;
 import mighty.ai.preparation.PreparationPlanner;
 import mighty.application.round.RoundService;
 import mighty.game.GameMode;
@@ -23,6 +28,8 @@ import mighty.game.round.RoundResult;
 import mighty.game.round.RoundSettlement;
 import mighty.game.round.RoundState;
 import mighty.model.Card;
+import mighty.model.Rank;
+import mighty.model.Suit;
 import mighty.model.Trump;
 
 /** 공개 입찰을 설명하는 가상 패에서 패스·맞기루·다른 공약의 내 명목 정산점을 짝지어 비교합니다. */
@@ -32,10 +39,53 @@ final class ContestedSuitAuction {
 
   private ContestedSuitAuction() {}
 
-  static Optional<PublicBid> signal(BiddingView view, BiddingHand own, List<BidOffer> legal) {
+  static Optional<Comparison> specialCompetition(BiddingView view, BiddingHand own,
+      List<BidOffer> legal, List<BidOffer> ordinary) {
+    if (view.hand().size() != 10 || view.bidding().highestBid().isEmpty()) {
+      return Optional.empty();
+    }
+    var standing = view.bidding().highestBid().orElseThrow();
+    var bid = ((BidOffer) standing.action()).bid();
+    var suit = PublicContractHistory.suitOf(bid.trump());
+    boolean defense = !standing.seat().equals(view.self()) && suit.isPresent()
+        && own.holding(suit.get()).size() == 1 && own.holding(suit.get()).contains(Rank.ACE);
+    var support = BidderSupportPlan.find(own, view.self(), view.bidding().history());
+    if (!defense && support.isEmpty()) {
+      return Optional.empty();
+    }
+    var offers = new LinkedHashSet<>(ordinary);
+    if (defense) {
+      // 방어비딩은 성공 상한을 넘더라도 실패 폭이 작은 다른 기루를 찾습니다.
+      for (var other : Suit.values()) {
+        if (other != suit.orElseThrow() && own.holding(other).size() >= 3) {
+          legal.stream().filter(o -> o.bid().trump().matches(other))
+              .min(Comparator.comparingInt(o -> o.bid().points())).ifPresent(offers::add);
+        }
+      }
+    }
+    if (support.isPresent()) {
+      legal.stream().filter(o -> o.bid().trump() == Trump.NO_TRUMP && o.bid().points() >= 17
+          && o.bid().points() < 20).min(Comparator.comparingInt(o -> o.bid().points()))
+          .ifPresent(offers::add);
+      var eighteen = new BidOffer(new Bid(18, Trump.NO_TRUMP));
+      if (own.hasMighty(Trump.NO_TRUMP) && legal.contains(eighteen)) {
+        offers.add(eighteen);
+      }
+    }
+    if (offers.isEmpty()) {
+      return Optional.empty();
+    }
+    var signal = defense ? standing : support.orElseThrow().signal();
+    return Optional.of(evaluate(view, signal, List.copyOf(offers), true));
+  }
+
+  static Optional<PublicBid> signal(BiddingView view, BiddingHand own, List<BidOffer> candidates) {
     if (view.hand().size() != 10) {
       return Optional.empty();
     }
+    // 손패 평가와 현재 입찰 상한을 통과한 노기루에 대해서만 운영 문양을 확인합니다.
+    var primary = candidates.stream().filter(c -> c.bid().trump() == Trump.NO_TRUMP)
+        .findFirst().flatMap(c -> runningSuit(own, c.bid()));
     var history = view.bidding().history();
     for (int i = history.size() - 1; i >= 0; i--) {
       var entry = history.get(i);
@@ -44,13 +94,27 @@ final class ContestedSuitAuction {
         continue;
       }
       var trump = offer.bid().trump();
-      var ownSuit = SuitBidEvaluator.assess(CandidateResources.from(own, trump));
-      if (ownSuit.canCompete() && legal.stream().map(BidOffer::bid)
-          .anyMatch(b -> b.trump() == trump && b.points() <= ownSuit.ceilingPoints())) {
+      if (candidates.stream().anyMatch(c -> c.bid().trump() == trump)
+          || primary.filter(trump::matches).isPresent()) {
         return Optional.of(entry);
       }
     }
     return Optional.empty();
+  }
+
+  private static Optional<Suit> runningSuit(BiddingHand hand, Bid contract) {
+    // 여러 문양의 연속 탑만으로 이 공약을 운영하면 낮은 꼬리패의 승격에 의존하지 않습니다.
+    if (FlexibleNoTrumpOpening.supportedBySpreadTops(hand, contract.points())) {
+      return Optional.empty();
+    }
+    var planned = HighNoTrumpPlan.forContract(hand, contract).map(HighNoTrumpPlan::primary);
+    if (planned.isPresent()) {
+      return planned;
+    }
+    var primary = NoTrumpPlanner.analyze(hand).primary();
+    var holding = hand.ordinaryHolding(primary, Trump.NO_TRUMP);
+    return holding.size() >= 4 && holding.size() > hand.ordinaryTopRunLength(primary, Trump.NO_TRUMP)
+        ? Optional.of(primary) : Optional.empty();
   }
 
   static final class Outcomes {
@@ -80,6 +144,11 @@ final class ContestedSuitAuction {
   record Comparison(BiddingAction choice, Map<BiddingAction, Estimate> estimates) {}
 
   static Comparison evaluate(BiddingView view, PublicBid signal, List<BidOffer> alternatives) {
+    return evaluate(view, signal, alternatives, false);
+  }
+
+  private static Comparison evaluate(BiddingView view, PublicBid signal, List<BidOffer> alternatives,
+      boolean inferControls) {
     var seats = view.bidding().participants().seats();
     var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, seats), Set.copyOf(seats));
     var unseen = DeckFactory.create().stream().filter(c -> !view.hand().contains(c)).toList();
@@ -90,7 +159,7 @@ final class ContestedSuitAuction {
     var standing = view.bidding().highestBid().orElseThrow();
     var service = RoundService.strategic();
     for (int sample = 0; sample < DEALS; sample++) {
-      var pool = draw(unseen, ((BidOffer) signal.action()).bid(), random);
+      var pool = draw(unseen, ((BidOffer) signal.action()).bid(), random, inferControls);
       var hands = new HashMap<Seat, List<Card>>();
       hands.put(view.self(), view.hand());
       hands.put(signal.seat(), pool.subList(0, 10));
@@ -110,8 +179,8 @@ final class ContestedSuitAuction {
         var round = RoundState.start(order, new BiddingResult(award.seat(), bid), hands,
             pool.subList(40, 43), history);
         // 테이블탑에서 사용하는 엿노·곱노 바닥 전 변경 후 실제 버리기·프렌드·플레이 정책을 적용합니다.
-        var before = PreparationPlanner.highBeforeKitty(BiddingHand.from(hands.get(award.seat())),
-            bid, bid).orElse(bid);
+        var before = PreparationPlanner.beforePublicBid(BiddingHand.from(hands.get(award.seat())),
+            bid, bid, award.seat(), history).orElse(bid);
         if (!before.equals(bid)) {
           round.reviseContract(award.seat(), before);
         }
@@ -125,36 +194,59 @@ final class ContestedSuitAuction {
       }
     }
     // 프렌드가 될 가능성과 야당일 때의 큰 손실은 실제 표본 빈도대로 평균에 포함합니다.
+    return new Comparison(bestChoice(results), Map.copyOf(results));
+  }
+
+  static BiddingAction bestChoice(Map<BiddingAction, Estimate> results) {
     BiddingAction best = BidPass.INSTANCE;
     for (var entry : results.entrySet()) {
       if (entry.getValue().total() > results.get(best).total()) {
         best = entry.getKey();
       }
     }
-    return new Comparison(best, Map.copyOf(results));
+    return best;
   }
 
   private static boolean onDeclarerTeam(RoundResult result, Seat seat) {
     return result.declarer().equals(seat) || result.friend().filter(seat::equals).isPresent();
   }
 
-  static List<Card> draw(List<Card> unseen, Bid signal, Random random) {
+  private static List<Card> draw(List<Card> unseen, Bid signal, Random random, boolean inferControls) {
     var pool = new ArrayList<>(unseen);
+    if (signal.points() < 16) {
+      // 낮은 문양 입찰에는 강제 첫 공약도 있으므로 특정 기루 장수나 탑을 전제하지 않습니다.
+      Collections.shuffle(pool, random);
+      return pool;
+    }
     List<Card> closest = null;
     int best = Integer.MIN_VALUE;
+    int plausible = 0;
     for (int attempt = 0; attempt < DRAW_LIMIT; attempt++) {
       Collections.shuffle(pool, random);
       var hand = BiddingHand.from(pool.subList(0, 10));
       var suit = CandidateResources.from(hand, signal.trump());
       var assessment = SuitBidEvaluator.assess(suit);
-      if (assessment.canCompete() && assessment.ceilingPoints() >= signal.points()) {
+      boolean qualifies = assessment.canCompete() && assessment.ceilingPoints() >= signal.points();
+      if (qualifies && (!inferControls || signal.points() < 17)) {
         return pool;
       }
-      // 내 손에 기루가 몰려 통상 입찰 기준을 만족하기 어려우면 가장 근접한 배분을 사용합니다.
-      int strength = assessment.ceilingPoints() * 100 + suit.length() * 10 + suit.pointsAtTop();
+      // 고공약을 설명할 수 있는 두 가상 패 중 초구와 조커 대응 수단이 나은 쪽을 씁니다.
+      // 특정 A나 총의 소유를 강제하지 않으며 어느 공약을 시험하든 같은 배분을 사용합니다.
+      int strength;
+      if (qualifies) {
+        plausible++;
+        int opening = suit.hasSideOpening() || suit.mighty() ? 1 : 0;
+        int jokerControl = suit.joker() || hand.hasGun(signal.trump()) ? 1 : 0;
+        strength = 10000 + opening + jokerControl;
+      } else {
+        strength = assessment.ceilingPoints() * 100 + suit.length() * 10 + suit.pointsAtTop();
+      }
       if (strength > best) {
         best = strength;
         closest = List.copyOf(pool);
+      }
+      if (plausible == 2) {
+        break;
       }
     }
     return closest;

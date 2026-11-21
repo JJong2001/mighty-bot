@@ -1,9 +1,9 @@
 package mighty.ai.bidding;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import mighty.ai.bidding.BidExpectedScoreEvaluator.ScoreSamples;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.game.bidding.Bid;
@@ -60,11 +60,15 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     BiddingHand hand = BiddingHand.from(view.hand());
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
-    var contested = ContestedSuitAuction.signal(view, hand, legal);
+    var contenders = evaluator.assess(hand).stream().filter(BidAssessment::canCompete)
+        .flatMap(a -> candidate(a, legal).stream()).toList();
+    var alternatives = contenders.stream().map(Candidate::offer).toList();
+    var special = ContestedSuitAuction.specialCompetition(view, hand, legal, alternatives);
+    if (special.isPresent()) {
+      return special.get().choice();
+    }
+    var contested = ContestedSuitAuction.signal(view, hand, alternatives);
     if (contested.isPresent()) {
-      var alternatives = evaluator.assess(hand).stream().filter(BidAssessment::canCompete)
-          .flatMap(a -> candidates(List.of(a), legal, a.trump()).stream())
-          .map(Candidate::offer).toList();
       return ContestedSuitAuction.evaluate(view, contested.get(), alternatives).choice();
     }
     var route = HighNoTrumpPlan.find(hand);
@@ -92,19 +96,12 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
       }
       return BidPass.INSTANCE;
     }
-    List<BidAssessment> assessments = evaluator.assess(hand).stream()
-        .filter(BidAssessment::canCompete).toList();
-    List<Candidate> noTrump = candidates(assessments, legal, Trump.NO_TRUMP);
+    var noTrump = contenders.stream()
+        .filter(candidate -> candidate.offer().bid().trump() == Trump.NO_TRUMP).toList();
     if (!noTrump.isEmpty() && !noTrump.get(0).assessment().compareWithSuitedBids()) {
       // 노기루 성공 운영이 보이면 바닥 뒤 기루 전환 선택권을 남기고 우선 비딩합니다.
       return noTrump.stream().max(CANDIDATE_ORDER).orElseThrow().offer();
     }
-    List<Candidate> contenders = new ArrayList<>(assessments.stream()
-        .filter(assessment -> assessment.trump() != Trump.NO_TRUMP)
-        .flatMap(assessment -> candidates(List.of(assessment), legal, assessment.trump()).stream())
-        .toList());
-    // 별도 회수 탑이 없어 기존 노기루 자격을 놓친 패도 주력 운영으로 얻을 정산점을 비교합니다.
-    contenders.addAll(noTrump);
     if (!contenders.isEmpty()) {
       return bestScoringOffer(hand, contenders);
     }
@@ -139,16 +136,11 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
         .max(SCORE_ORDER).orElseThrow().offer();
   }
 
-  private static List<Candidate> candidates(List<BidAssessment> assessments, List<BidOffer> legal,
-      Trump trump) {
-    return assessments.stream()
-        .filter(assessment -> assessment.trump() == trump)
-        .flatMap(assessment -> legal.stream()
-            .filter(offer -> offer.bid().trump() == assessment.trump())
-            .filter(offer -> offer.bid().points() >= assessment.openingPoints()
-                && offer.bid().points() <= assessment.ceilingPoints())
-            .min(Comparator.comparingInt(offer -> offer.bid().points()))
-            .map(offer -> new Candidate(offer, assessment)).stream())
-        .toList();
+  private static Optional<Candidate> candidate(BidAssessment assessment, List<BidOffer> legal) {
+    return legal.stream().filter(offer -> offer.bid().trump() == assessment.trump())
+        .filter(offer -> offer.bid().points() >= assessment.openingPoints()
+            && offer.bid().points() <= assessment.ceilingPoints())
+        .min(Comparator.comparingInt(offer -> offer.bid().points()))
+        .map(offer -> new Candidate(offer, assessment));
   }
 }

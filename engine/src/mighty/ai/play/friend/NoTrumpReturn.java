@@ -19,6 +19,27 @@ final class NoTrumpReturn {
   static Optional<PlayDecision> choose(View view, PlayFacts facts, List<Action> ordinary) {
     var history = view.context().history();
     int points = view.contract().points();
+    if (view.contract().trump() == Trump.NO_TRUMP && points >= 17 && points < 20
+        && !history.isEmpty() && view.friendSelection() instanceof CardFriend selection
+        && selection.card() instanceof StandardCard called) {
+      var last = history.get(history.size() - 1);
+      // 선입찰자가 실제 프렌드가 되어 주공의 물패를 받았을 때만 독립 승리를 이어갑니다.
+      boolean handedOver = history.stream().anyMatch(trick ->
+          trick.leader().equals(view.context().declarer()) && trick.winner().equals(view.self())
+          && trick.cards().get(0).action().card() instanceof StandardCard lead && lead.points() == 0
+          && view.context().auction().stream().anyMatch(entry -> entry.seat().equals(view.self())
+              && entry.action() instanceof BidOffer offer && offer.bid().points() >= 17
+              && offer.bid().trump().matches(lead.suit())
+              && (called.equals(mighty.game.rule.Rules.mighty(Trump.NO_TRUMP))
+              || called.suit() == lead.suit() && called.rank() == Rank.ACE)));
+      if (handedOver && last.winner().equals(view.self())) {
+        var tops = ordinary.stream().filter(a -> facts.isSuitTop(a.card())).toList();
+        if (!tops.isEmpty()) {
+          return Optional.of(new PlayDecision(PlaySupport.highest(tops),
+              "주공에게 받은 선에서 남은 탑으로 추가 승리를 확보합니다."));
+        }
+      }
+    }
     if (view.contract().trump() != Trump.NO_TRUMP || history.isEmpty()
         || (points != 16 && points != 17 && points != 20)) {
       return Optional.empty();

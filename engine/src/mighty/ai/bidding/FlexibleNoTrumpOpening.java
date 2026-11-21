@@ -41,7 +41,13 @@ final class FlexibleNoTrumpOpening {
         "바닥의 미확인 카드는 승리 수에 더하지 않고 실제 버리기 이후 공약을 다시 평가합니다."));
   }
 
-  private static int ordinaryWins(BiddingHand hand) {
+  static boolean supportedBySpreadTops(BiddingHand hand, int points) {
+    return available(hand) && Arrays.stream(Suit.values())
+        .filter(suit -> hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0).count() >= 2
+        && assess(hand).ceilingPoints() >= points;
+  }
+
+  static int ordinaryWins(BiddingHand hand) {
     return Arrays.stream(Suit.values())
         .mapToInt(suit -> hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP))
         .sum();
