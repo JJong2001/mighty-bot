@@ -39,6 +39,52 @@ final class NoTrumpOperations {
     return initial;
   }
 
+  static Optional<mighty.ai.play.PlayDecision> runPrimaryBeforeMightyFriend(
+      DeclarerPosition position) {
+    var view = position.view();
+    if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() != 15
+        || !position.calls(Rules.mighty(Trump.NO_TRUMP))) {
+      return Optional.empty();
+    }
+    var initial = BiddingHand.from(initialCards(position));
+    Suit suit = initialPlan(position).primary();
+    var ranks = initial.ordinaryHolding(suit, Trump.NO_TRUMP).ranks();
+    int run = initial.ordinaryTopRunLength(suit, Trump.NO_TRUMP);
+    // 연속 탑 뒤의 점수 카드가 상위 한 장만 빠지면 살아나는 긴 문양을 먼저 돌립니다.
+    if (!initial.hasJoker() || ranks.size() < 4 || run < 2 || run >= ranks.size()
+        || ranks.get(run).value() < Rank.TEN.value()
+        || ranks.get(run - 1).value() - ranks.get(run).value() != 2) {
+      return Optional.empty();
+    }
+    for (var trick : view.context().history()) {
+      var lead = trick.cards().get(0).action();
+      boolean sameSuit = lead.card() instanceof StandardCard card && card.suit() == suit
+          || lead instanceof JokerLead joker && joker.declaredSuit() == suit;
+      if (!sameSuit || !trick.leader().equals(view.self()) || !trick.winner().equals(view.self())) {
+        return Optional.empty();
+      }
+    }
+    var held = position.inSuit(suit);
+    if (held.isEmpty()) {
+      return Optional.empty();
+    }
+    var highest = PlaySupport.highest(held);
+    var outside = position.facts().cards().outsideCards(suit).stream()
+        .filter(card -> !card.equals(Rules.mighty(Trump.NO_TRUMP)))
+        .filter(card -> card.rank().value() > ((StandardCard) highest.card()).rank().value())
+        .count();
+    if (outside == 0) {
+      return Optional.of(new mighty.ai.play.PlayDecision(highest,
+          "주력의 일반 탑을 이어서 돌리고 마이티 프렌드 호출을 늦춥니다."));
+    }
+    if (outside == 1 && highest.card().points() > 0) {
+      return position.legal().stream().filter(action -> action instanceof JokerLead lead
+          && lead.declaredSuit() == suit).findFirst().map(action -> new mighty.ai.play.PlayDecision(
+          action, "주력 점수 카드 위에 한 장만 남아 조커로 그 문양을 돌립니다."));
+    }
+    return Optional.empty();
+  }
+
   private static NoTrumpPlan initialPlan(DeclarerPosition position) {
     var view = position.view();
     List<Card> initial = initialCards(position);

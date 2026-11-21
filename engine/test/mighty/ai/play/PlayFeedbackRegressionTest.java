@@ -28,6 +28,32 @@ class PlayFeedbackRegressionTest {
   private final RulePlayPolicy policy = new RulePlayPolicy();
 
   @ParameterizedTest
+  @CsvSource({"C, Q, J", "C, 4, JK", "H, Q, J", "H, 4, JK"})
+  void cashesPrimaryBeforeCallingMighty(String suit, String lastRank, String next) {
+    var trump = Trump.NO_TRUMP;
+    var friend = new CardFriend(card("SA"));
+    var hidden = UnrevealedFriend.INSTANCE;
+    String side = suit.equals("C") ? "H" : "C";
+    String buried = side + "J " + side + "10 " + side + "2";
+    String rest = suit + "J " + suit + "6 " + suit + "2 SK S3 D4 " + side + "9 JK";
+    var first = row(1, trump, p(0, suit + "A"), p(1, suit + "3"), p(2, suit + "5"),
+        p(3, suit + "7"), p(4, suit + "8"));
+    var second = row(2, trump, p(0, suit + "K"), p(1, suit + "9"), p(2, suit + "10"),
+        p(3, "D3"), p(4, suit + lastRank));
+    assertEquals(card(suit + "A"), policy.choose(view(0, 0, trump, 15,
+        suit + "A " + suit + "K " + rest, buried, friend, hidden, List.of(), List.of())).card());
+    assertEquals(card(suit + "K"), policy.choose(view(0, 0, trump, 15,
+        suit + "K " + rest, buried, friend, hidden, List.of(first), List.of())).card());
+    var third = policy.choose(view(0, 0, trump, 15, rest, buried, friend, hidden,
+        List.of(first, second), List.of()));
+    if (next.equals("JK")) {
+      assertEquals(new JokerLead(((StandardCard) card(suit + "J")).suit()), third);
+    } else {
+      assertEquals(card(suit + next), third.card());
+    }
+  }
+
+  @ParameterizedTest
   @CsvSource({
       "HJ, HQ, 15, true",
       "C3, HQ, 15, false",
