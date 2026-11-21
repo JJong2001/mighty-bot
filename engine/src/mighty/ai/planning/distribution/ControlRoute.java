@@ -18,8 +18,11 @@ final class ControlRoute {
     var own = deal.hands().get(new Seat(0));
     boolean ownMighty = own.contains(Rules.mighty(Trump.NO_TRUMP));
     boolean ownJoker = own.contains(Joker.INSTANCE);
-    boolean friendJoker = called instanceof Joker && !ownJoker;
-    boolean friendMighty = called.equals(Rules.mighty(Trump.NO_TRUMP)) && !ownMighty;
+    var partner =
+        deal.friendIndex() < 0 ? List.<Card>of() : deal.hands().get(new Seat(deal.friendIndex()));
+    boolean friendJoker = called instanceof Joker && !ownJoker && partner.contains(Joker.INSTANCE);
+    boolean friendMighty = called.equals(Rules.mighty(Trump.NO_TRUMP)) && !ownMighty
+        && partner.contains(Rules.mighty(Trump.NO_TRUMP));
     boolean gun = own.contains(Rules.gun(Trump.NO_TRUMP));
     boolean jokerInOpposition = deal.hands().entrySet().stream().anyMatch(e ->
         e.getKey().index() != 0 && e.getKey().index() != deal.friendIndex() && e.getValue()

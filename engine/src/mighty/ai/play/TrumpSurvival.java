@@ -53,7 +53,13 @@ public final class TrumpSurvival {
   public boolean canPreserveWhenRuffing(StandardCard card) {
     boolean ordinaryBlocker = facts.cards().trumps().outside().stream()
         .anyMatch(higher -> higher.rank().value() > card.rank().value());
-    return survives(card) && (!ordinaryBlocker || survivesAfterSpending(card, 1));
+    if (!ordinaryBlocker) {
+      return survives(card);
+    }
+    // 더 높은 자기 점수는 이 카드 대신 희생할 받침이 아닙니다.
+    long lowerCover = new TrumpControl(view, facts).own().stream()
+        .filter(held -> held.rank().value() < card.rank().value()).count();
+    return lowerCover - 1 >= threatsAbove(card);
   }
 
 }

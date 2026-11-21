@@ -17,6 +17,50 @@ import org.junit.jupiter.params.provider.*;
 
 class PreparationFeedbackTest {
 
+  @Test
+  void buriesIsolatedSidePointWithoutSpendingRecoveryAce() {
+    var view = new DiscardView(new Seat(0), new Bid(16, Trump.DIAMOND),
+        cards("S4 S8 D3 D4 D5 D6 D9 DQ DK C10 CA JK H3"));
+    var plan = new PreparationPlanner().choose(view);
+    assertEquals(new Bid(17, Trump.NO_TRUMP), plan.contract());
+    assertTrue(plan.discarded().contains(CardParser.parse("C10")));
+    assertFalse(plan.discarded().contains(CardParser.parse("CA")));
+    assertFalse(plan.discarded().stream().anyMatch(card -> card instanceof StandardCard c
+        && c.suit() == Suit.DIAMOND));
+  }
+
+  @Test
+  void doesNotCutProtectedSideJackToAvoidSingletonWater() {
+    var view = new DiscardView(new Seat(0), new Bid(15, Trump.HEART),
+        cards("S3 S4 D2 D3 DJ DK C2 C10 H2 H9 HJ HQ HK"));
+    var discarded = new RuleDiscardPolicy().choose(view);
+    assertTrue(Collections.disjoint(discarded, cards("D2 D3 DJ DK")));
+    var kept = new ArrayList<>(view.hand());
+    kept.removeAll(cards("S4 C2 C10"));
+    var chosen = new ArrayList<>(view.hand());
+    chosen.removeAll(discarded);
+    var evaluator = new RetainedHandEvaluator();
+    assertEquals(evaluator.score(kept, cards("S4 C2 C10"), Trump.HEART),
+        evaluator.score(chosen, discarded, Trump.HEART));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"D2", "D4", "D5", "D7", "D8", "D9"})
+  void retainsLongSideInsteadOfScatteredWater(String extra) {
+    var hand = cards("SJ SA D3 D6 DJ DA C3 C4 C5 C10 H3 H8 " + extra);
+    var view = new DiscardView(new Seat(0), new Bid(16, Trump.DIAMOND), hand);
+    assertEquals(new HashSet<>(cards("SJ H3 H8")),
+        new HashSet<>(new RuleDiscardPolicy().choose(view)));
+  }
+
+  @Test
+  void preservesLongSideAndSingletonGun() {
+    var hand = cards("S2 S3 S8 SQ SK D2 D4 C3 C6 H2 H6 H10 HK");
+    var view = new DiscardView(new Seat(0), new Bid(16, Trump.HEART), hand);
+    assertEquals(new HashSet<>(cards("D2 D4 C6")),
+        new HashSet<>(new RuleDiscardPolicy().choose(view)));
+  }
+
   private static List<Card> cards(String s) {
     return CardParser.parseList(s);
   }

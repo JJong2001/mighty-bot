@@ -29,7 +29,18 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> jokers = position.legal().stream().filter(action -> action instanceof JokerLead)
         .toList();
-    if (view.trickNumber().value() == 1 && view.friendSelection() == SpecialFriend.FIRST_TRICK) {
+    if (view.trickNumber().isFirst() && view.contract().trump() == Trump.NO_TRUMP) {
+      var plan = NoTrumpOperations.openingPlan(position);
+      if (plan.opening().isPresent()) {
+        var action = new mighty.game.action.StandardPlay(plan.opening().get(), false);
+        if (!position.legal().contains(action)) {
+          throw new IllegalStateException("평가한 노기루 초구를 실행할 수 없습니다.");
+        }
+        return decision(action, plan.purpose().explanation());
+      }
+    }
+    if (view.trickNumber().value() == 1 && view.friendSelection() == SpecialFriend.FIRST_TRICK
+        && view.contract().trump() != Trump.NO_TRUMP) {
       var requested = NoTrumpOperations.openingReturnSuit(position);
       var matching = requested.stream().flatMap(suit -> position.inSuit(suit).stream())
           .filter(
@@ -69,12 +80,6 @@ final class DeclarerLeadStrategy {
     var jokerRoute = NoTrumpOperations.longJokerFriendRoute(position);
     if (jokerRoute.isPresent()) {
       return jokerRoute.get();
-    }
-    if (view.trickNumber().value() == 1) {
-      var openingSupport = NoTrumpOperations.splitOpening(position);
-      if (openingSupport.isPresent()) {
-        return openingSupport.get();
-      }
     }
     var sweep = NoTrumpOperations.sweepReachableBlocker(position);
     if (sweep.isPresent()) {
@@ -121,10 +126,6 @@ final class DeclarerLeadStrategy {
     var sideSupport = SupportCallPlan.choose(position);
     if (sideSupport.isPresent()) {
       return sideSupport.get();
-    }
-    var operatingOpening = NoTrumpOperations.openingSupport(position);
-    if (operatingOpening.isPresent()) {
-      return operatingOpening.get();
     }
     if (view.contract().trump() != Trump.NO_TRUMP) {
       var hand = mighty.ai.bidding.BiddingHand.from(view.hand());
@@ -347,14 +348,6 @@ final class DeclarerLeadStrategy {
       if (!jokers.isEmpty() && SpecialCardPlan.usedOwnMighty(view)) {
         return joker(jokers, mainSuit(position), "마이티 다음 조커로 기루를 지정해 두 특수카드를 기루 소모에 연결합니다.");
       }
-      if (position.justRuffed() && !position.facts().isSuitTop(next.card()) && !position.sides()
-          .isEmpty()) {
-        var tops = position.sides().stream().filter(a -> position.facts().isSuitTop(a.card()))
-            .toList();
-        return decision(
-            tops.isEmpty() ? position.lowSide(position.sides()) : PlaySupport.cheapest(tops, view),
-            "간으로 선을 잡은 뒤 막힌 점수 기루를 내주지 않고 사이드에서 운영과 호출을 이어갑니다.");
-      }
       if (position.needsFriendCall()) {
         java.util.List<mighty.model.Card> initial = new java.util.ArrayList<>(view.hand());
         view.context().history()
@@ -380,33 +373,19 @@ final class DeclarerLeadStrategy {
         }
         return decision(PlaySupport.cheapest(calling, view), "기루로 프렌드를 호출하고 반환을 회수할 자원을 남깁니다.");
       }
-      if (position.trumpControlWeakened() && !position.sides().isEmpty()) {
-        List<Action> tops = position.sides().stream()
-            .filter(action -> position.facts().isSuitTop(action.card())).toList();
-        Action side =
-            tops.isEmpty() ? position.lowSide(position.sides()) : PlaySupport.cheapest(tops, view);
-        return decision(side, "두 순회 뒤에도 높은 외부 기루가 남아 부기루·사이드로 전환하고 간 회수를 준비합니다.");
+      var pressure = control.pressureLead(trumps);
+      if (pressure.isPresent()) {
+        return decision(pressure.get(),
+            "잔여 장수와 프렌드의 마이티 지원을 보고 흩어진 기루의 상위를 더 확인합니다.");
       }
       Action highest = PlaySupport.highest(trumps);
       if (!position.facts().isSuitTop(highest.card()) && !position.sides().isEmpty()) {
-        long rounds = view.context().history().stream().filter(t -> view.contract().trump().matches(
-            Rules.conditionsFor(view.contract().trump(), t.number(), t.cards().get(0).action())
-                .leadSuit())).count();
-        var middle = trumps.stream().filter(a -> a.card().points() == 0)
-            .filter(a -> position.facts().cards().outsideCards().stream()
-                .anyMatch(c -> c instanceof StandardCard higher
-                    && higher.suit() == ((StandardCard) a.card()).suit()
-                    && higher.rank().value() > ((StandardCard) a.card()).rank().value()))
-            .max(java.util.Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
-        if (rounds < 2 && trumps.size() >= 3 && !position.justRuffed() && middle.isPresent()) {
-          return decision(middle.get(), "상위에 막힌 점수를 내주지 않고 중간 숫자 기루로 외부 상위 소모를 유도합니다.");
-        }
         var sideTops = position.sides().stream().filter(a -> position.facts().isSuitTop(a.card()))
             .toList();
         return decision(
             sideTops.isEmpty() ? position.lowSide(position.sides()) : PlaySupport.cheapest(sideTops,
                 view),
-            "기루 A로 간친 뒤 남은 Q를 미소모 K에 내주지 않고 사이드에서 회수 수단을 유지합니다.");
+            "추가 교환의 장수나 지원이 부족해 사이드로 전환하고 회수 수단을 유지합니다.");
       }
       return decision(PlaySupport.highest(trumps), "야당에게 남을 수 있는 기루를 높은 기루로 소모시킵니다.");
     }

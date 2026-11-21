@@ -234,7 +234,7 @@ public final class RoundState {
   public FriendView friendView(Seat viewer) {
     requirePhase(GamePhase.FRIEND);
     requireDeclarer(viewer);
-    return new FriendView(declarer, contract, hands.get(declarer), discarded);
+    return new FriendView(declarer, contract, hands.get(declarer), discarded, contractHistory);
   }
 
   /**

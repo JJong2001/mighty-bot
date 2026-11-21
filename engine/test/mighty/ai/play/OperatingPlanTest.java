@@ -1093,15 +1093,15 @@ class OperatingPlanTest {
   }
 
   @Test
-  @DisplayName("미공개 프렌드 호출도 A간 이후 막힌 JT 재리드보다 우선하지 않는다")
-  void unrevealedFriendDoesNotForceBlockedPointReturnAfterRuff() {
+  @DisplayName("미소모 마이티 프렌드가 있으면 짧은 기루도 지원을 요청하며 상위를 확인한다")
+  void remainingMightyFriendSupportsBlockedTrumpReturnAfterRuff() {
     var first = row(1, Trump.HEART, p(0, "CA"), p(1, "C2"), p(2, "C3"), p(3, "C4"), p(4, "C5"));
     var second = row(2, Trump.HEART, p(0, "D2"), p(1, "DK"), p(2, "D3"), p(3, "D4"), p(4, "D5"));
     var third = row(3, Trump.HEART, p(1, "CK"), p(2, "C6"), p(3, "C7"), p(4, "C8"), p(0, "HA"));
     View v = view(0, 0, Trump.HEART, 16, "HJ H10 C9 C10 S2 S3 D6", "D8 D9 D10",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(first, second, third),
         List.of());
-    assertFalse(Trump.HEART.matches(((StandardCard) policy.choose(v).card()).suit()));
+    assertTrue(Trump.HEART.matches(((StandardCard) policy.choose(v).card()).suit()));
   }
 
   @Test
@@ -1569,12 +1569,12 @@ class OperatingPlanTest {
   }
 
   @Test
-  @DisplayName("노기루도 야당 선에서 일반 A보다 마이티로 먼저 지원한다")
-  void noTrumpMightyPriorityIsNotLimitedToDeclarerLead() {
+  @DisplayName("야당이 비주력 문양을 내면 뒤 주공의 요청을 기다리며 일반 A로 먼저 지원한다")
+  void ordinaryAceSupportsNonPrimaryOppositionLeadBeforeBehindDeclarer() {
     var first = row(1, Trump.NO_TRUMP, p(0, "C2"), p(1, "C3"), p(2, "CA"), p(3, "C4"), p(4, "C5"));
     View v = view(3, 0, Trump.NO_TRUMP, 15, "SA HA H2 D2 D3 C6 S2 S3 S4", "",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(first), List.of(p(2, "H3")));
-    assertEquals(card("SA"), policy.choose(v).card());
+    assertEquals(card("HA"), policy.choose(v).card());
   }
 
   @Test

@@ -3,6 +3,9 @@ package mighty.ai.planning.distribution;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import mighty.ai.bidding.BiddingHand;
+import mighty.ai.planning.NoTrumpOpeningPlan;
+import mighty.ai.planning.NoTrumpOpeningPlanner;
+import mighty.game.bidding.Bid;
 import mighty.game.deal.DeckFactory;
 import mighty.game.friend.*;
 import mighty.model.*;
@@ -21,20 +24,27 @@ public final class NoTrumpDistributionEvaluator {
 
   public static NoTrumpDistribution evaluate(BiddingHand hand, Collection<? extends Card> excluded,
       Card called) {
-    FriendSelection selection =
-        hand.contains(called) ? SpecialFriend.FIRST_TRICK : new CardFriend(called);
+    return evaluate(hand, excluded, called,
+        NoTrumpOpeningPlanner.forCandidate(hand, excluded, called, 0, List.of()));
+  }
+
+  private static NoTrumpDistribution evaluate(BiddingHand hand, Collection<? extends Card> excluded,
+      Card called, NoTrumpOpeningPlan plan) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
     if (own.size() != 10 || excluded.size() > 3 || excluded.contains(called)) {
       return new NoTrumpDistribution(0,
           0, 0, 0, 0, 0, 0);
     }
-    String key =
+    String dealKey =
         own.stream().map(Card::toCode).toList() + "/" + excluded.stream().map(Card::toCode).sorted()
             .toList() + "/" + called.toCode();
     if (CACHE.size() > 512) {
       CACHE.clear();
     }
-    return CACHE.computeIfAbsent(key, k -> evaluate(own, excluded, selection, key.hashCode()));
+    String key = dealKey + "/" + plan;
+    long seed = excluded.size() == 3 ? sharedSeed(own, excluded) : dealKey.hashCode();
+    return CACHE.computeIfAbsent(key,
+        k -> evaluate(own, excluded, plan.selection(), seed, plan));
   }
 
   public static NoTrumpDistribution evaluateSolo(BiddingHand hand,
@@ -50,7 +60,15 @@ public final class NoTrumpDistributionEvaluator {
         own.stream().map(Card::toCode).toList() + "/" + excluded.stream().map(Card::toCode).sorted()
             .toList() + "/solo";
     return CACHE.computeIfAbsent(key,
-        k -> evaluate(own, excluded, SpecialFriend.NONE, k.hashCode()));
+        k -> evaluate(own, excluded, SpecialFriend.NONE,
+            excluded.size() == 3 ? sharedSeed(own, excluded) : k.hashCode(),
+            new NoTrumpOpeningPlan(SpecialFriend.NONE, Optional.empty(), Optional.empty(),
+                excluded.size() == 3, false, NoTrumpOpeningPlan.Purpose.DEFER)));
+  }
+
+  private static long sharedSeed(List<Card> own, Collection<? extends Card> excluded) {
+    return (own.stream().map(Card::toCode).toList().toString() + "/"
+        + excluded.stream().map(Card::toCode).sorted().toList()).hashCode();
   }
 
   public static int soloCeiling(NoTrumpDistribution distribution) {
@@ -66,7 +84,7 @@ public final class NoTrumpDistributionEvaluator {
     return 0;
   }
 
-  public record Support(Card friend, NoTrumpDistribution distribution) {
+  public record Support(Card friend, NoTrumpDistribution distribution, NoTrumpOpeningPlan plan) {
 
   }
 
@@ -76,10 +94,22 @@ public final class NoTrumpDistributionEvaluator {
 
   public static Support bestSupport(BiddingHand hand, Collection<? extends Card> excluded,
       int contractPoints) {
+    return bestSupport(hand, excluded, contractPoints, List.of());
+  }
+
+  public static Support bestSupport(BiddingHand hand, Collection<? extends Card> excluded,
+      int contractPoints, List<Bid> history) {
     return mighty.ai.planning.NoTrumpPlanner.supportCandidates(hand, excluded).stream()
-        .map(card -> new Support(card, evaluate(hand, excluded, card)))
-        .max(Comparator.<Support>comparingInt(s -> contractPoints == 0
-                ? qualifyingContract(hand, s) : qualifyingContract(hand, s) >= contractPoints ? 1 : 0)
+        .map(card -> {
+          var plan = NoTrumpOpeningPlanner.forCandidate(hand, excluded, card, contractPoints,
+              history);
+          return new Support(card, evaluate(hand, excluded, card, plan), plan);
+        })
+        // 자력 주력을 소모하기 전에 다른 문양의 상위를 연결하는 의존 관계를 먼저 충족합니다.
+        .max(Comparator.<Support>comparingInt(s -> s.plan().connectionBeforeRun() ? 1 : 0)
+            .thenComparingInt(s -> contractPoints == 0
+                ? qualifyingContract(hand, s)
+                : qualifyingContract(hand, s) >= contractPoints ? 1 : 0)
             // 반환까지 평가한 초구프가 풀 조건을 충족하면 그 수순을 준비 단계에서도 사용합니다.
             .thenComparingInt(s -> (contractPoints == 0 || contractPoints == 20)
                 && hand.contains(s.friend())
@@ -129,18 +159,25 @@ public final class NoTrumpDistributionEvaluator {
   }
 
   private static NoTrumpDistribution evaluate(List<Card> own, Collection<? extends Card> excluded,
-      FriendSelection selection, long seed) {
+      FriendSelection selection, long seed, NoTrumpOpeningPlan plan) {
     Random random = new Random(seed);
     int sixteen = 0, seventeen = 0, eighteen = 0, nineteen = 0, twenty = 0, total = 0;
     Card called = selection instanceof CardFriend friend ? friend.card() : own.get(0);
     var hand = BiddingHand.from(own);
-    var returnSuit = selection == SpecialFriend.FIRST_TRICK
-        ? mighty.ai.planning.NoTrumpPlanner.openingFriendReturn(hand) : Optional.<Suit>empty();
+    var returnSuit = plan.returnSuit();
+    if (selection == SpecialFriend.FIRST_TRICK && plan.opening().isEmpty()) {
+      return new NoTrumpDistribution(0, 0, 0, 0, 0, 0, 0);
+    }
     Suit main = mighty.ai.planning.NoTrumpPlanner.signallingSuit(hand);
     for (int index = 0; index < SAMPLES; index++) {
-      var deal = ConditionalDeal.sample(own, excluded, selection, index, random);
-      if (selection == SpecialFriend.FIRST_TRICK) {
-        deal = deal.afterOpening(returnSuit);
+      var deal = excluded.size() == 3
+          ? ConditionalDeal.sampleKnownBuried(own, excluded, selection, random)
+          : ConditionalDeal.sample(own, excluded, selection, index, random);
+      // 바닥 전에는 열 장이 바뀔 수 있어 일반 지정프의 초구를 확정 수순으로 소비하지 않습니다.
+      // 초구프는 승자에 따라 소속 자체가 정해지므로 예비 평가에서도 초구가 필요합니다.
+      if (plan.opening().isPresent() && (plan.finalHand()
+          || selection == SpecialFriend.FIRST_TRICK)) {
+        deal = deal.afterOpening(plan.opening().get());
       }
       int lost = returnSuit.isPresent()
           ? ControlRoute.openingReturnLoss(deal, main, returnSuit.get(),

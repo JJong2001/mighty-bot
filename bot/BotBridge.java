@@ -183,7 +183,8 @@ public final class BotBridge {
         Bid current = contract(req.get("contract"));
         List<Bid> declarations = contractHistory(req);
         var resolution = POLICIES.preparation().resolveContract(
-            new FriendView(self, current, hand, cards(req.get("discarded"))), declarations.get(0),
+            new FriendView(self, current, hand, cards(req.get("discarded")), declarations),
+            declarations.get(0),
             declarations);
         Bid selected = resolution.contract();
         out.put("declarations", resolution.declarations().stream()
@@ -194,7 +195,8 @@ public final class BotBridge {
       }
       case "friend" -> {
         FriendSelection f = FRIEND.choose(
-            new FriendView(self, contract(req.get("contract")), hand, cards(req.get("discarded"))));
+            new FriendView(self, contract(req.get("contract")), hand, cards(req.get("discarded")),
+                contractHistory(req)));
         out.put("type", "friend");
         out.put("friend", f instanceof CardFriend cf ? cf.card().toCode()
             : f == SpecialFriend.NONE ? "NONE" : "FIRST");

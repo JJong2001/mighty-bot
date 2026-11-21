@@ -40,7 +40,11 @@ public final class RuffPlan {
     var exposedPoints = ruffs.stream().filter(a -> a.card().points() > 0)
         .filter(a -> !survival.canPreserveWhenRuffing((StandardCard) a.card())).toList();
     if (!exposedPoints.isEmpty()) {
-      return exposedPoints.stream()
+      // 외부의 같은 상위에 막힌 연결 점수는 높은 것으로 간쳐 서열을 보입니다.
+      var anchor = (StandardCard) exposedPoints.get(0).card();
+      return ruffs.stream().filter(a -> a.card().points() > 0)
+          .filter(a -> exposedPoints.contains(a)
+              || survival.threatsAbove((StandardCard) a.card()) == survival.threatsAbove(anchor))
           .max(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
     }
     // 미확인 뒤자리의 모든 상위 카드를 이긴다는 이유로 A간을 강제하지 않습니다.

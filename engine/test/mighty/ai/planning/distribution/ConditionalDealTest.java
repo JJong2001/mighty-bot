@@ -13,6 +13,58 @@ import org.junit.jupiter.api.Test;
 class ConditionalDealTest {
 
   @Test
+  void consumedMightyIsNotAvailableForAnotherSupportRound() {
+    var own = CardParser.parseList("D3 D4 D5 D6 D9 DQ DK CA JK H3");
+    var buried = CardParser.parseList("S4 S8 C10");
+    var mighty = CardParser.parse("SA");
+    for (int seed = 0; seed < 32; seed++) {
+      var before = ConditionalDeal.sampleKnownBuried(own, buried, new CardFriend(mighty),
+          new Random(seed));
+      var after = before.afterOpening((StandardCard) CardParser.parse("D3"));
+      assertFalse(after.hands().get(new Seat(after.friendIndex())).contains(mighty));
+      assertEquals(ControlRoute.pointsLost(after, CardParser.parse("DA")),
+          ControlRoute.pointsLost(after, mighty));
+    }
+  }
+
+  @Test
+  void specifiedFriendDoesNotChangeWhenAnotherSeatWinsOpening() {
+    var own = CardParser.parseList("S7 S8 D2 DK C3 C4 CQ CK CA JK");
+    var buried = CardParser.parseList("H3 H4 HQ");
+    int checked = 0;
+    for (int seed = 0; seed < 32; seed++) {
+      var deal = ConditionalDeal.sampleKnownBuried(own, buried,
+          new CardFriend(CardParser.parse("DA")), new Random(seed));
+      if (!deal.hands().get(new Seat(deal.friendIndex())).contains(CardParser.parse("SA"))) {
+        assertEquals(deal.friendIndex(),
+            deal.afterOpening((StandardCard) CardParser.parse("D2")).friendIndex());
+        checked++;
+      }
+    }
+    assertTrue(checked > 0);
+  }
+
+  @Test
+  void knownBuriedCandidatesShareTheSamePhysicalDeals() {
+    var own = CardParser.parseList("S7 SA D2 DK C3 C4 CQ CK CA JK");
+    var buried = CardParser.parseList("H3 H4 HQ");
+    for (int seed = 0; seed < 32; seed++) {
+      var first = ConditionalDeal.sampleKnownBuried(own, buried,
+          mighty.game.friend.SpecialFriend.FIRST_TRICK, new Random(seed));
+      var specified = ConditionalDeal.sampleKnownBuried(own, buried,
+          new CardFriend(CardParser.parse("DA")), new Random(seed));
+      assertEquals(first.hands(), specified.hands());
+      assertEquals(first.buried(), specified.buried());
+      assertTrue(specified.hands().get(new Seat(specified.friendIndex()))
+          .contains(CardParser.parse("DA")));
+      var after = specified.afterOpening((mighty.model.StandardCard) CardParser.parse("D2"));
+      assertFalse(after.hands().get(new Seat(0)).contains(CardParser.parse("D2")));
+      assertFalse(
+          after.hands().get(new Seat(specified.friendIndex())).contains(CardParser.parse("DA")));
+    }
+  }
+
+  @Test
   void conditionsFriendAndKeepsEveryCardUnique() {
     var own = CardParser.parseList("S4 SJ SQ SK C3 C4 C8 C9 CK CA");
     var buried = CardParser.parseList("D2 D3 D4");

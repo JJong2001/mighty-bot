@@ -106,24 +106,6 @@ record DeclarerPosition(View view, PlayFacts facts, List<Action> legal) {
   }
 
   /**
-   * 두 차례 이상 기루를 따라 소모했는데도 자기 최고 기루보다 높은 외부 기루가 남는 상태입니다.
-   */
-  boolean trumpControlWeakened() {
-    if (trumps().isEmpty() || !enemiesMayHaveTrump()) {
-      return false;
-    }
-    long rounds = view.context().history().stream().filter(trick -> view.contract().trump().matches(
-        Rules.conditionsFor(view.contract().trump(), trick.number(), trick.cards().get(0).action())
-            .leadSuit())).count();
-    int ownTop = trumps().stream().mapToInt(action -> ((StandardCard) action.card()).rank().value())
-        .max().orElseThrow();
-    return rounds >= 2 && facts.cards().outsideCards().stream()
-        .anyMatch(card -> card instanceof StandardCard standard
-            && view.contract().trump().matches(standard.suit())
-            && standard.rank().value() > ownTop);
-  }
-
-  /**
    * 물패를 내도 된다는 확정이 아니라, 지원 요청·문양 전환에 쓸 낮은 사이드 후보입니다.
    */
   Action lowSide(List<Action> candidates) {
