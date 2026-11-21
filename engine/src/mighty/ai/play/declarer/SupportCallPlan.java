@@ -40,10 +40,6 @@ final class SupportCallPlan {
     if (establishedRun.isPresent()) {
       return establishedRun;
     }
-    // 총 계획은 이미 주력에서 마이티를 받는 별도 경로이므로 유지합니다.
-    if (view.hand().contains(Rules.gun(Trump.NO_TRUMP))) {
-      return Optional.empty();
-    }
     return position.ordinary().stream()
         .filter(a -> ((StandardCard) a.card()).suit() != position.primarySuit())
         .filter(a -> a.card().points() == 0 && !position.facts().isSuitTop(a.card()))
@@ -58,8 +54,7 @@ final class SupportCallPlan {
   private static Optional<PlayDecision> requestBeforeSpendingEntry(DeclarerPosition position,
       List<Action> main) {
     var view = position.view();
-    var facts = position.facts();
-    if (!view.hand().contains(Joker.INSTANCE) || view.hand().contains(Rules.gun(Trump.NO_TRUMP))) {
+    if (!view.hand().contains(Joker.INSTANCE)) {
       return Optional.empty();
     }
 
@@ -98,7 +93,9 @@ final class SupportCallPlan {
         .filter(play -> play.seat().equals(view.self()))
         .forEach(play -> initial.add(play.action().card()));
     var original = mighty.ai.bidding.BiddingHand.from(initial);
-    if (original.ordinaryTopRunLength(position.primarySuit(), Trump.NO_TRUMP) < 4) {
+    // 일반 상위가 이어져도 지정 마이티 문양을 먼저 돌리면 친구의 지원을 강제로 씁니다.
+    if (position.primarySuit() == Rules.mighty(Trump.NO_TRUMP).suit()
+        || original.ordinaryTopRunLength(position.primarySuit(), Trump.NO_TRUMP) < 4) {
       return Optional.empty();
     }
     var tops = main.stream()

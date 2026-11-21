@@ -81,7 +81,8 @@ class BiddingExamplesTest {
   @DisplayName("강제 첫 입찰과 자발적 경쟁을 구분하고 상한을 넘지 않는다")
   void competesOnlyWhenSupported(Example example) {
     BiddingAction afterLowBid = choose(example.hand(), new Bid(13, Trump.DIAMOND));
-    assertEquals(example.voluntary() ? new BidOffer(new Bid(example.opening(), example.selectedTrump()))
+    assertEquals(
+        example.voluntary() ? new BidOffer(new Bid(example.opening(), example.selectedTrump()))
             : BidPass.INSTANCE,
         afterLowBid);
     assertEquals(BidPass.INSTANCE,

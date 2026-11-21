@@ -26,7 +26,7 @@ public final class CardResources {
     return card.equals(Rules.mighty(view.contract().trump()))
         || facts.isSuitTop(card)
         || mighty.ai.play.friend.FriendReturnReserve.protects(view, card)
-        || mighty.ai.play.opposition.OppositionGuards.protectsNoTrumpDevelopment(view, facts,
+        || mighty.ai.play.opposition.OppositionGuards.protectsDevelopment(view, facts,
         standard.suit())
         || primaryWinner(standard)
         || developmentRole(standard);
@@ -59,6 +59,32 @@ public final class CardResources {
   }
 
   /**
+   * 실제 운영 문양의 수비 장수는 다른 문양의 독립 탑카보다 먼저 보존합니다.
+   */
+  public int retentionPriority(Card card) {
+    if (!(card instanceof StandardCard standard)
+        || card.equals(Rules.mighty(view.contract().trump()))) {
+      return 3;
+    }
+    if (mighty.ai.play.opposition.OppositionGuards.protectsDevelopment(view, facts,
+        standard.suit())) {
+      return 2;
+    }
+    return reserved(card) ? 1 : 0;
+  }
+
+  /**
+   * 일반 물패를 먼저 버리되, 확인된 수비의 받침까지 점수보다 먼저 버리지는 않습니다.
+   */
+  public int discardTier(Card card) {
+    int retention = retentionPriority(card);
+    if (retention >= 2) {
+      return retention;
+    }
+    return card.points() == 0 ? 0 : 1;
+  }
+
+  /**
    * 강제 따라내기 등 보존할 수 없는 경우에는 손실이 작은 자원부터 선택합니다.
    */
   public int preservationCost(Card card) {
@@ -69,7 +95,7 @@ public final class CardResources {
       return 2000;
     }
     StandardCard standard = (StandardCard) card;
-    return (reserved(card) ? 500 : 0)
+    return retentionPriority(card) * 500
         + (view.contract().trump().matches(standard.suit()) ? 100 : 0)
         + standard.rank().value();
   }

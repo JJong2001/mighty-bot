@@ -15,20 +15,16 @@ public final class OppositionGuards {
   }
 
   /**
-   * 반복해서 공개된 노기루 주력은 높은 카드와 받쳐 줄 장수를 함께 남깁니다.
+   * 공개된 운영 문양은 높은 카드와 받쳐 줄 장수를 함께 남깁니다.
    */
-  public static boolean protectsNoTrumpDevelopment(View view, PlayFacts facts, Suit suit) {
-    if (view.role() != mighty.game.Role.OPPOSITION || view.contract().trump() != Trump.NO_TRUMP
-        || !mighty.ai.play.DeclarerOperations.contains(view, facts, suit)) {
+  public static boolean protectsDevelopment(View view, PlayFacts facts, Suit suit) {
+    var inference = facts.declarerSuits().assess(suit);
+    if (view.role() != mighty.game.Role.OPPOSITION
+        || inference.shownVoid()
+        || (!inference.operating() && inference.ordinaryLeads() == 0)) {
       return false;
     }
-    long leads = view.context().history().stream()
-        .filter(trick -> trick.leader().equals(view.context().declarer()))
-        .filter(
-            trick -> trick.cards().get(0).action() instanceof mighty.game.action.StandardPlay play
-                && !play.call() && play.card().suit() == suit
-                && !play.card().equals(Rules.mighty(Trump.NO_TRUMP))).count();
-    return leads >= 2 && retention(view, facts, suit) > 0;
+    return retention(view, facts, suit) > 0;
   }
 
   public static int retention(View view, PlayFacts facts, Suit suit) {

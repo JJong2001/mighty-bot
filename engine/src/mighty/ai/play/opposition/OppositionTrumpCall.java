@@ -40,6 +40,8 @@ final class OppositionTrumpCall {
         && otherSeats.stream().filter(facts.teams()::isAlly)
         .allMatch(seat -> facts.cards().isVoid(seat, suit))
         && otherSeats.stream().anyMatch(facts.teams()::isAlly);
-    return stripsDeclarer || drawsPoints ? call : Optional.empty();
+    boolean establishesTail = new mighty.ai.play.TrumpControl(view, facts)
+        .canEstablishTailAfterSweep();
+    return stripsDeclarer || drawsPoints || establishesTail ? call : Optional.empty();
   }
 }

@@ -6,6 +6,8 @@ import java.util.Optional;
 import mighty.game.Role;
 import mighty.game.Seat;
 import mighty.game.friend.NoFriend;
+import mighty.game.friend.CardFriend;
+import mighty.game.rule.Rules;
 import mighty.game.action.Action;
 import mighty.game.action.StandardPlay;
 import mighty.game.observation.View;
@@ -32,6 +34,47 @@ public final class TrumpControl {
 
   public List<StandardCard> outside() {
     return facts.cards().trumps().outside();
+  }
+
+  /**
+   * 흩어진 야당 기루를 더 빼도 간칠 장수가 남는지, 프렌드의 마이티 지원이 있는지 봅니다.
+   */
+  public Optional<Action> pressureLead(List<Action> legal) {
+    if (own().isEmpty() || outside().isEmpty() || shouldPreserveLastTrump()) {
+      return Optional.empty();
+    }
+    var suit = own().get(0).suit();
+    long enemySeats = view.context().playOrder().seats().stream()
+        .filter(seat -> !facts.teams().isAlly(seat))
+        .filter(seat -> !facts.cards().isVoid(seat, suit))
+        .filter(seat -> !facts.cards().trumps().likelyShort(seat)).count();
+    var mightyCard = Rules.mighty(view.contract().trump());
+    boolean friendSupport = view.friendSelection() instanceof CardFriend friend
+        && friend.card().equals(mightyCard) && facts.cards().outsideCards().contains(mightyCard);
+    // 한 번 확인하고도 두 장은 남겨야 선 회수와 다음 선택을 함께 유지할 수 있습니다.
+    // 외부 상위의 장수는 동시에 따라 나올 수 있으므로 순차 패배 횟수로 세지 않습니다.
+    long possibleEnemyHolders = Math.min(enemySeats, outside().size());
+    if (!friendSupport && (possibleEnemyHolders < 2 || own().size() <= 2)) {
+      return Optional.empty();
+    }
+    var candidates = PlaySupport.ordinary(legal, view).stream()
+        .filter(action -> view.contract().trump().matches(((StandardCard) action.card()).suit()))
+        .toList();
+    var water = candidates.stream().filter(action -> action.card().points() == 0).toList();
+    return candidates.isEmpty() ? Optional.empty() : Optional.of(water.isEmpty()
+        ? PlaySupport.cheapest(candidates, view) : PlaySupport.highest(water));
+  }
+
+  /**
+   * 승리하는 조커 한 바퀴와 자력 탑카로 최악의 단독 분포까지 소모하고 낮은 기루를 살릴 수 있습니다.
+   */
+  public boolean canEstablishTailAfterSweep() {
+    if (outside().isEmpty() || own().isEmpty()) {
+      return false;
+    }
+    int outsideTop = outside().stream().mapToInt(card -> card.rank().value()).max().orElseThrow();
+    long tops = own().stream().filter(card -> card.rank().value() > outsideTop).count();
+    return own().size() > tops && outside().size() <= tops + 1;
   }
 
   /**

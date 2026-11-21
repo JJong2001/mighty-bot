@@ -87,10 +87,20 @@ public class PlayPolicyCharacterizationTest {
         default -> SpecialFriend.NONE;
       };
       round.chooseFriend(declarer, selection);
-      var policy = new RulePlayPolicy();
+      List<String> baseline;
+      try {
+        baseline = baselineTraces();
+      } catch (Exception failure) {
+        throw new IllegalStateException("의도 검사에 사용할 기존 공개 진행을 읽을 수 없습니다.", failure);
+      }
+      String[] recorded = baseline.stream().filter(line -> line.startsWith(id() + "\t"))
+          .findFirst().orElseThrow().split("\t")[1].split("\\|");
       for (int turn = 1; turn < targetTurn; turn++) {
         var view = round.currentView();
-        round.play(new PublicPlay(view.self(), policy.choose(view)));
+        // 앞 차례의 새 정책 때문에 검사할 손패 자체가 달라지지 않도록 입력을 고정합니다.
+        String[] entry = recorded[turn - 1].split(":", 2);
+        assertEquals(view.self().index(), Integer.parseInt(entry[0]));
+        round.play(new PublicPlay(view.self(), recordedAction(entry[1])));
       }
       return round.currentView();
     }
@@ -159,48 +169,73 @@ public class PlayPolicyCharacterizationTest {
     return List.copyOf(scenarios);
   }
 
+  private static List<String> baselineTraces() throws Exception {
+    var expected = new ArrayList<>(readFixture(RESOURCE));
+    for (String resource : List.of(STRATEGY_DELTAS, SUPPORT_DELTAS, DESCENDING_DELTAS,
+        SUPPORT_ORDER_DELTAS, MIGHTY_SUPPORT_DELTAS, RECOVERY_DELTAS, APPROVED_ACTION_DELTAS)) {
+      applyActionDeltas(expected, resource);
+    }
+    applyExplanationDeltas(expected, EXPLANATION_DELTAS);
+    return expected;
+  }
+
+  private static List<String> readFixture(String resource) throws Exception {
+    var input = PlayPolicyCharacterizationTest.class.getResourceAsStream(resource);
+    assertNotNull(input, "전략 변경 검토 기준이 필요합니다: " + resource);
+    try (var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+      return reader.lines().toList();
+    }
+  }
+
+  private static int traceIndex(List<String> traces, String id) {
+    return IntStream.range(0, traces.size()).filter(i -> traces.get(i).startsWith(id + "\t"))
+        .findFirst().orElseThrow();
+  }
+
+  private static void applyActionDeltas(List<String> traces, String resource) throws Exception {
+    var ids = new HashSet<String>();
+    for (String line : readFixture(resource)) {
+      String[] fields = line.split("\t");
+      assertEquals(4, fields.length, "행동 기준은 배분·행동·이유·정산을 포함합니다.");
+      org.junit.jupiter.api.Assertions.assertTrue(ids.add(fields[0]), "중복 행동 기준: " + fields[0]);
+      traces.set(traceIndex(traces, fields[0]), line);
+    }
+  }
+
+  private static void applyExplanationDeltas(List<String> traces, String resource)
+      throws Exception {
+    var ids = new HashSet<String>();
+    for (String line : readFixture(resource)) {
+      String[] delta = line.split("\t");
+      assertEquals(2, delta.length, "설명 기준은 시나리오 ID와 이유 해시만 포함합니다.");
+      org.junit.jupiter.api.Assertions.assertTrue(ids.add(delta[0]), "중복 설명 기준: " + delta[0]);
+      int index = traceIndex(traces, delta[0]);
+      String[] fields = traces.get(index).split("\t");
+      fields[2] = delta[1];
+      traces.set(index, String.join("\t", fields));
+    }
+  }
+
+  private static mighty.game.action.Action recordedAction(String text) {
+    if (text.startsWith("StandardPlay[")) {
+      String code = text.substring(text.indexOf("card=") + 5, text.indexOf(','));
+      return mighty.data.ActionConverter.decode(code + (text.contains("call=true") ? ":CALL" : ""));
+    }
+    if (text.startsWith("JokerLead[")) {
+      String suit = text.substring(text.indexOf('=') + 1, text.length() - 1);
+      return new mighty.game.action.JokerLead(mighty.model.Suit.valueOf(suit));
+    }
+    if (text.equals("JokerFollow[]")) {
+      return new mighty.game.action.JokerFollow();
+    }
+    throw new IllegalArgumentException("지원하지 않는 회귀 행동입니다: " + text);
+  }
+
   @TestFactory
   Stream<DynamicTest> preservesActionsReasonsAndResults() throws Exception {
-    var input = getClass().getResourceAsStream(RESOURCE);
-    assertNotNull(input, "수정 전 엔진으로 기록한 기준 파일이 필요합니다.");
-    List<String> expected;
-    try (var reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
-      expected = new ArrayList<>(reader.lines().toList());
-    }
-    // 원래 리팩토링 기준은 보존하고, 별도 검토한 전략 변경 배분만 명시적으로 덮습니다.
-    for (String resource : List.of(STRATEGY_DELTAS, SUPPORT_DELTAS, DESCENDING_DELTAS,
-        SUPPORT_ORDER_DELTAS, MIGHTY_SUPPORT_DELTAS, RECOVERY_DELTAS,
-        APPROVED_ACTION_DELTAS)) {
-      var deltas = getClass().getResourceAsStream(resource);
-      assertNotNull(deltas, "전략 변경 검토 기준이 필요합니다. " + resource);
-      var changedIds = new HashSet<String>();
-      try (var reader = new BufferedReader(new InputStreamReader(deltas, StandardCharsets.UTF_8))) {
-        for (String line : reader.lines().toList()) {
-          String id = line.split("\t")[0];
-          org.junit.jupiter.api.Assertions.assertTrue(changedIds.add(id), "중복 변경 기준: " + id);
-          int index = IntStream.range(0, expected.size())
-              .filter(i -> expected.get(i).startsWith(id + "\t")).findFirst().orElseThrow();
-          expected.set(index, line);
-        }
-      }
-    }
-    var explanations = getClass().getResourceAsStream(EXPLANATION_DELTAS);
-    assertNotNull(explanations, "설명 문구 변경 기준이 필요합니다.");
-    var explainedIds = new HashSet<String>();
-    try (var reader = new BufferedReader(
-        new InputStreamReader(explanations, StandardCharsets.UTF_8))) {
-      for (String line : reader.lines().toList()) {
-        String[] delta = line.split("\t");
-        assertEquals(2, delta.length, "설명 기준은 시나리오 ID와 이유 해시만 포함합니다.");
-        String id = delta[0];
-        org.junit.jupiter.api.Assertions.assertTrue(explainedIds.add(id), "중복 설명 기준: " + id);
-        int index = IntStream.range(0, expected.size())
-            .filter(i -> expected.get(i).startsWith(id + "\t")).findFirst().orElseThrow();
-        String[] fields = expected.get(index).split("\t");
-        fields[2] = delta[1];
-        expected.set(index, String.join("\t", fields));
-      }
-    }
+    var expected = baselineTraces();
+    applyActionDeltas(expected, "/play-policy-feedback-action-deltas.tsv");
+    applyExplanationDeltas(expected, "/play-policy-feedback-explanation-deltas.tsv");
     var scenarios = scenarios();
     assertEquals(scenarios.size(), expected.size());
     return IntStream.range(0, scenarios.size()).mapToObj(index -> DynamicTest.dynamicTest(

@@ -38,16 +38,8 @@ public final class RuleFriendPolicy implements FriendPolicy {
       var plan = NoTrumpPlanner.analyze(hand, view.discardedCards());
       if (plan.available()) {
         var support = NoTrumpDistributionEvaluator.bestSupport(hand, view.discardedCards(),
-            view.contract().points());
-        // 낮은 공약에서는 분포 모델이 경로를 충분히 찾지 못한 경우 기존 운영 근거를 유지합니다.
-        Card selected = view.contract().points() < 16 && support.distribution().sixteenRate() < 0.50
-            ? plan.friend() : support.friend();
-        if (!owns(view, selected)) {
-          return new CardFriend(selected);
-        }
-        if (hand.hasJoker()) {
-          return SpecialFriend.FIRST_TRICK;
-        }
+            view.contract().points(), view.contractHistory());
+        return support.plan().selection();
       }
     }
     var side = SuitFriendPlan.choose(hand, view.discardedCards(), view.contract().trump());

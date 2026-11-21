@@ -21,35 +21,36 @@ final class OppositionTrumpFollow {
     }
     List<Action> low = trumps.stream().filter(a -> a.card().points() == 0).toList();
     var winner = facts.currentWinner().orElseThrow();
-    boolean specialOutside = facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
-        || facts.cards().outsideCards().contains(Joker.INSTANCE);
+    boolean specialOutside =
+        facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
+            || facts.cards().outsideCards().contains(Joker.INSTANCE);
     boolean specialBehind = specialCanBeHeldBehind(view, facts);
     boolean pressureAlready = winner.action().card().points() > 0
         || winner.action().card().equals(Rules.mighty(view.contract().trump()))
         || winner.action().card() instanceof Joker;
     List<Action> winners = facts.winningActions().stream().filter(trumps::contains).toList();
+    var survival = new TrumpSurvival(view, facts);
+    var highest = trumps.stream().map(a -> (StandardCard) a.card())
+        .max(Comparator.comparingInt(c -> c.rank().value())).orElseThrow();
+    int points = facts.trickPoints();
+    // 여분의 점수 기루로 현재 승리를 요구하고 가장 높은 공격 수단은 남깁니다.
+    var cheaperPoint = winners.stream().filter(a -> a.card().points() > 0)
+        .filter(a -> !a.card().equals(highest)).toList();
+    if (!facts.allyWinning() && !cheaperPoint.isEmpty()
+        && (points > 0 || !survival.survives(highest))) {
+      return new PlayDecision(PlaySupport.cheapest(cheaperPoint, view),
+          "낮은 점수 기루로 현재 승리를 요구하고 최고 기루는 다음 공격에 남깁니다.");
+    }
     // 첫 순회의 적은 점수는 특수카드가 빠진 안전한 최고 기루로 나중에 크게 잡을 수 있습니다.
     boolean firstRound = view.context().history().stream()
         .noneMatch(t -> view.contract().trump().matches(
             Rules.conditionsFor(view.contract().trump(), t.number(), t.cards().get(0).action())
                 .leadSuit()));
-    int points = facts.trickPoints();
-    var highest = trumps.stream().map(a -> (StandardCard) a.card())
-        .max(Comparator.comparingInt(c -> c.rank().value())).orElseThrow();
     if (!facts.allyWinning() && firstRound && points <= 1 && !specialOutside && !low.isEmpty()
         && !winner.seat().equals(view.context().declarer())
-        && facts.isSuitTop(highest) && new TrumpSurvival(view, facts).survives(highest)) {
+        && facts.isSuitTop(highest) && survival.survives(highest)) {
       return new PlayDecision(PlaySupport.cheapest(low, view),
           "첫 기루 순회의 작은 점수에는 안전하게 남을 최고 기루를 숨겨 이후 점수 트릭을 노립니다.");
-    }
-    // 여당 뒤에서 J로도 앞설 수 있으면 A를 다음 공격에 남깁니다.
-    if (!facts.allyWinning() && points < 2 && !specialOutside) {
-      var cheaperPoint = winners.stream().filter(a -> a.card().points() > 0)
-          .filter(a -> !a.card().equals(highest)).toList();
-      if (!cheaperPoint.isEmpty() && facts.isSuitTop(highest)) {
-        return new PlayDecision(PlaySupport.cheapest(cheaperPoint, view),
-            "낮은 점수 기루로 압박하고 최고 기루는 다음 공격에 남깁니다.");
-      }
     }
     if (points >= 2 && !facts.allyWinning() && !winners.isEmpty()) {
       return new PlayDecision(PlaySupport.cheapest(winners, view),
@@ -65,20 +66,20 @@ final class OppositionTrumpFollow {
       return new PlayDecision(PlaySupport.cheapest(low, view),
           "동료가 이미 점수 기루로 압박하므로 높은 수비를 겹치지 않습니다.");
     }
-    // 기루가 두 장이면 T/J/Q를 희생해 뒤 여당의 미소모 특수카드를 끌어냅니다.
-    if (!low.isEmpty() && !pressureAlready && specialBehind && trumps.size() == 2) {
+    // 버틸 길이가 없는 중간 점수로 압박하되, 남은 일반 최상위권은 다음 공격에 남깁니다.
+    if (!low.isEmpty() && !pressureAlready && specialBehind && !survival.survives(highest)) {
       var pressure = trumps.stream().filter(a -> a.card().points() > 0)
-          .filter(a -> ((StandardCard) a.card()).rank() == Rank.TEN
-              || ((StandardCard) a.card()).rank() == Rank.JACK
-              || ((StandardCard) a.card()).rank() == Rank.QUEEN)
+          .filter(a -> !survival.survives((StandardCard) a.card()))
+          .filter(a -> !a.card().equals(highest)
+              || facts.cards().trumps().outside().stream().filter(higher ->
+              higher.rank().value() > ((StandardCard) a.card()).rank().value()).count() > 1)
           .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
       if (pressure.isPresent()) {
         return new PlayDecision(pressure.get(),
-            "기루 두 장 중 10·J·Q를 희생해 뒤 여당의 마이티·조커를 소진시키려 합니다.");
+            "장수로 지키기 어려운 중간 점수 기루로 뒤 여당의 상위 사용을 압박합니다.");
       }
     }
     // A/K 고정 분기 대신 Q/J도 같은 장수와 남은 위협 수로 수비 가치를 판단합니다.
-    var survival = new TrumpSurvival(view, facts);
     if (!low.isEmpty() && survival.threatsAbove(highest) > 0 && survival.survives(highest)) {
       return new PlayDecision(PlaySupport.cheapest(low, view),
           "남은 상위 소모를 버틸 기루 장수이므로 높은 공격 수단을 보존합니다.");

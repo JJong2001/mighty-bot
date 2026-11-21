@@ -24,9 +24,9 @@ final class FriendFollowStrategy {
     if (openingSignal.isPresent()) {
       return openingSignal.get();
     }
-    var mightyAttack = FriendRiskSupport.onOppositionMightyAttack(view, facts, legal);
-    if (mightyAttack.isPresent()) {
-      return mightyAttack.get();
+    var waiting = FriendRiskSupport.beforeDeclarerResponse(view, facts, legal);
+    if (waiting.isPresent()) {
+      return waiting.get();
     }
     var requested = FriendSupportIntent.requestedSpecial(view, facts);
     if (requested.isPresent()) {

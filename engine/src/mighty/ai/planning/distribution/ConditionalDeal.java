@@ -46,32 +46,42 @@ record ConditionalDeal(Map<Seat, List<Card>> hands, List<Card> buried, int frien
   }
 
   /**
-   * 초구프로 연결한 배분은 초구에 소비한 카드까지 제외한 뒤 나머지 운영을 평가합니다.
+   * 바닥이 확정된 후보들은 같은 물리적 배분에서 지정 카드의 실제 가상 소유자를 찾습니다.
    */
-  ConditionalDeal afterOpening() {
-    return afterOpening(Optional.empty());
+  static ConditionalDeal sampleKnownBuried(List<Card> own, Collection<? extends Card> buried,
+      FriendSelection selection, Random random) {
+    if (buried.size() != 3) {
+      throw new IllegalArgumentException("확정된 바닥 세 장이 필요합니다.");
+    }
+    List<Card> pool = new ArrayList<>(DeckFactory.create().stream()
+        .filter(card -> !own.contains(card) && !buried.contains(card)).toList());
+    Collections.shuffle(pool, random);
+    Map<Seat, List<Card>> hands = new LinkedHashMap<>();
+    hands.put(new Seat(0), own);
+    int partner = -1;
+    for (int seat = 1; seat < 5; seat++) {
+      var held = List.copyOf(pool.subList((seat - 1) * 10, seat * 10));
+      hands.put(new Seat(seat), held);
+      if (selection instanceof CardFriend friend && held.contains(friend.card())) {
+        partner = seat;
+      }
+    }
+    return new ConditionalDeal(hands, List.copyOf(buried), partner);
   }
 
-  ConditionalDeal afterOpening(Optional<mighty.model.Suit> requested) {
+  /**
+   * 평가한 계획에 적힌 초구를 그대로 사용하며 별도의 초구 선택을 하지 않습니다.
+   */
+  ConditionalDeal afterOpening(mighty.model.StandardCard lead) {
     var own = hands.get(new Seat(0));
     var mightyCard = mighty.game.rule.Rules.mighty(mighty.model.Trump.NO_TRUMP);
-    var lead = own.stream().filter(mighty.model.StandardCard.class::isInstance)
-        .map(mighty.model.StandardCard.class::cast)
-        .filter(card -> !card.equals(mightyCard))
-        .filter(card -> requested.isEmpty() || requested.get() == card.suit())
-        .min(Comparator.<mighty.model.StandardCard>comparingInt(Card::points)
-            .thenComparingLong(card -> own.stream().filter(held ->
-                held instanceof mighty.model.StandardCard standard
-                    && standard.suit() == card.suit()).count())
-            .thenComparingInt(card -> card.rank().value())
-            .thenComparing(Card::toCode));
-    if (lead.isEmpty()) {
-      return this;
+    if (!own.contains(lead)) {
+      throw new IllegalArgumentException("계획의 초구가 자기 손패에 없습니다.");
     }
     int winner = 0;
-    Card winningCard = lead.get();
+    Card winningCard = lead;
     var conditions = new mighty.game.rule.TrickConditions(mighty.model.Trump.NO_TRUMP,
-        lead.get().suit(),
+        lead.suit(),
         new mighty.game.TrickNumber(1), false);
     for (int index = 1; index < 5; index++) {
       for (Card card : hands.get(new Seat(index))) {
@@ -87,13 +97,13 @@ record ConditionalDeal(Map<Seat, List<Card>> hands, List<Card> buried, int frien
       Seat seat = new Seat(index);
       var held = new ArrayList<>(hands.get(seat));
       if (index == 0) {
-        held.remove(lead.get());
+        held.remove(lead);
       } else if (index == winner) {
         held.remove(winningCard);
       } else {
         var following = held.stream()
             .filter(card -> card instanceof mighty.model.StandardCard standard
-                && standard.suit() == lead.get().suit() && !card.equals(mightyCard)).toList();
+                && standard.suit() == lead.suit() && !card.equals(mightyCard)).toList();
         var choices = following.isEmpty() ? held : following;
         choices.stream().min(Comparator.comparingInt((Card card) -> card.equals(mightyCard) ? 2
                 : card instanceof mighty.model.Joker ? 1 : 0).thenComparingInt(Card::points)
@@ -101,7 +111,8 @@ record ConditionalDeal(Map<Seat, List<Card>> hands, List<Card> buried, int frien
       }
       remaining.put(seat, held);
     }
-    return new ConditionalDeal(remaining, buried, winner == 0 ? -1 : winner);
+    int establishedFriend = friendIndex < 0 ? (winner == 0 ? -1 : winner) : friendIndex;
+    return new ConditionalDeal(remaining, buried, establishedFriend);
   }
 
 }

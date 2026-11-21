@@ -43,6 +43,7 @@ public final class PolicyParityCheck {
   }
 
   public static void main(String[] args) {
+    verifyNoTrumpConnectionPlan();
     String hand = "SK SQ SJ S7 S6 S2 DA CA C2 JK";
     String buried = "H9 H8 H4";
     Bid contract = new Bid(20, Trump.NO_TRUMP);
@@ -290,6 +291,30 @@ public final class PolicyParityCheck {
     require(BotBridge.choose(req).get("card").equals("D10"));
     System.out.println(
         "PASS: shared bidding/discard/friend/play policies, current declarer opening, public contract history");
+  }
+
+  /**
+   * 같은 공개 공약에서 프렌드 지정과 초구가 공통 계획을 따르는지 확인합니다.
+   */
+  private static void verifyNoTrumpConnectionPlan() {
+    String hand = "S7 SA D2 DK C3 C4 CQ CK CA JK";
+    String buried = "H3 H4 HQ";
+    var wireBids = List.of(Map.of("points", 20, "trump", "C"),
+        Map.of("points", 20, "trump", "N"));
+    var bids = List.of(new Bid(20, Trump.CLUB), new Bid(20, Trump.NO_TRUMP));
+    var req = request("friend", hand);
+    req.put("discarded", cards(buried).stream().map(Card::toCode).toList());
+    req.put("contractHistory", wireBids);
+    var local = LOCAL.friend().choose(new FriendView(new Seat(0), bids.get(1), cards(hand),
+        cards(buried), bids));
+    require(local.equals(new CardFriend(CardParser.parse("DA"))));
+    require(BotBridge.choose(req).get("friend").equals("DA"));
+    req.put("phase", "play");
+    req.put("declarer", "Red");
+    req.put("friend", "DA");
+    req.put("history", List.of());
+    req.put("trick", List.of());
+    require(BotBridge.choose(req).get("card").equals("D2"));
   }
 
 }

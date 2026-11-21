@@ -1,6 +1,7 @@
 package mighty.ai.play;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static mighty.ai.play.PlayTestFixture.*;
 
 import java.util.*;
 import java.util.stream.IntStream;
@@ -35,97 +36,6 @@ class OperatingPlanTest {
   }
 
   private final RulePlayPolicy policy = new RulePlayPolicy();
-
-  private static Card card(String code) {
-    return CardParser.parse(code);
-  }
-
-  private static PublicPlay p(int seat, String code) {
-    return new PublicPlay(new Seat(seat), code.equals("JK") ? new JokerFollow()
-        : new StandardPlay((StandardCard) card(code), false));
-  }
-
-  private static PublicTrick row(int number, Trump trump, PublicPlay... plays) {
-    var cards = List.of(plays);
-    return new PublicTrick(new TrickNumber(number), cards,
-        Rules.currentWinner(trump, new TrickNumber(number), cards).orElseThrow().seat());
-  }
-
-  private static View view(int self, int declarer, Trump trump, int points, String owned,
-      String buried,
-      FriendSelection selection, FriendStatus friend, List<PublicTrick> history,
-      List<PublicPlay> trick) {
-    var hand = CardParser.parseList(owned);
-    var discards = CardParser.parseList(buried);
-    Set<Card> unique = new HashSet<>();
-    List<Card> all = new ArrayList<>(hand);
-    if (self == declarer) {
-      all.addAll(discards);
-    }
-    history.forEach(t -> t.cards().forEach(play -> all.add(play.action().card())));
-    trick.forEach(play -> all.add(play.action().card()));
-    for (Card c : all) {
-      assertTrue(unique.add(c), "중복: " + c);
-    }
-    var seats = IntStream.range(0, 5).mapToObj(Seat::new).toList();
-    var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, seats), new HashSet<>(seats));
-    PrivateInfo info =
-        self == declarer ? new DeclarerInfo(hand, discards) : new NonDeclarerInfo(hand);
-    return ObservationFactory.create(new Seat(self), info, new Bid(points, trump), selection,
-        new Context(order, new Seat(declarer), friend, history), trick);
-  }
-
-  /**
-   * 카운팅 검사 전용 공개 이력. 실제 승자·차례·중복은 검사하며 상대의 손패는 만들지 않습니다.
-   */
-  private static List<PublicTrick> countedHistory(String owned, String buried, String known,
-      String unseen,
-      List<PublicPlay> current, PublicTrick last) {
-    int count = 10 - CardParser.parseList(owned).size();
-    Set<Card> excluded = new HashSet<>(CardParser.parseList(owned + " " + buried + " " + unseen));
-    current.forEach(play -> excluded.add(play.action().card()));
-    if (last != null) {
-      last.cards().forEach(play -> excluded.add(play.action().card()));
-    }
-    LinkedHashSet<Card> pool = new LinkedHashSet<>();
-    pool.addAll(CardParser.parseList(known));
-    pool.removeAll(excluded);
-    DeckFactory.create().stream().filter(c -> !excluded.contains(c)).forEach(pool::add);
-    List<Card> available = new ArrayList<>(pool);
-    List<PublicTrick> history = new ArrayList<>();
-    int automatic = count - (last == null ? 0 : 1);
-    for (int number = 1; number <= automatic; number++) {
-      List<PublicPlay> plays = new ArrayList<>();
-      for (int seat = 0; seat < 5; seat++) {
-        Card c = available.get((number - 1) * 5 + seat);
-        Action a = c instanceof Joker ? (seat == 0 ? new JokerLead(Suit.SPADE) : new JokerFollow())
-            : new StandardPlay((StandardCard) c, false);
-        plays.add(new PublicPlay(new Seat(seat), a));
-      }
-      int winner = Rules.currentWinner(Trump.SPADE, new TrickNumber(number), plays).orElseThrow()
-          .seat().index();
-      if (winner != 0) {
-        Action strongest = plays.get(winner).action();
-        if (strongest instanceof JokerFollow) {
-          strongest = new JokerLead(Suit.SPADE);
-        }
-        Action old = plays.get(0).action();
-        if (old instanceof JokerLead) {
-          old = new JokerFollow();
-        }
-        plays.set(winner, new PublicPlay(new Seat(winner), old));
-        plays.set(0, new PublicPlay(new Seat(0), strongest));
-      }
-      Seat actual = Rules.currentWinner(Trump.SPADE, new TrickNumber(number), plays).orElseThrow()
-          .seat();
-      assertEquals(new Seat(0), actual);
-      history.add(new PublicTrick(new TrickNumber(number), plays, actual));
-    }
-    if (last != null) {
-      history.add(last);
-    }
-    return history;
-  }
 
   @Test
   @DisplayName("친구 마이티에 점수 지원을 이유로 기루 A를 버리지 않는다")
@@ -1183,15 +1093,15 @@ class OperatingPlanTest {
   }
 
   @Test
-  @DisplayName("미공개 프렌드 호출도 A간 이후 막힌 JT 재리드보다 우선하지 않는다")
-  void unrevealedFriendDoesNotForceBlockedPointReturnAfterRuff() {
+  @DisplayName("미소모 마이티 프렌드가 있으면 짧은 기루도 지원을 요청하며 상위를 확인한다")
+  void remainingMightyFriendSupportsBlockedTrumpReturnAfterRuff() {
     var first = row(1, Trump.HEART, p(0, "CA"), p(1, "C2"), p(2, "C3"), p(3, "C4"), p(4, "C5"));
     var second = row(2, Trump.HEART, p(0, "D2"), p(1, "DK"), p(2, "D3"), p(3, "D4"), p(4, "D5"));
     var third = row(3, Trump.HEART, p(1, "CK"), p(2, "C6"), p(3, "C7"), p(4, "C8"), p(0, "HA"));
     View v = view(0, 0, Trump.HEART, 16, "HJ H10 C9 C10 S2 S3 D6", "D8 D9 D10",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(first, second, third),
         List.of());
-    assertFalse(Trump.HEART.matches(((StandardCard) policy.choose(v).card()).suit()));
+    assertTrue(Trump.HEART.matches(((StandardCard) policy.choose(v).card()).suit()));
   }
 
   @Test
@@ -1659,12 +1569,12 @@ class OperatingPlanTest {
   }
 
   @Test
-  @DisplayName("노기루도 야당 선에서 일반 A보다 마이티로 먼저 지원한다")
-  void noTrumpMightyPriorityIsNotLimitedToDeclarerLead() {
+  @DisplayName("야당이 비주력 문양을 내면 뒤 주공의 요청을 기다리며 일반 A로 먼저 지원한다")
+  void ordinaryAceSupportsNonPrimaryOppositionLeadBeforeBehindDeclarer() {
     var first = row(1, Trump.NO_TRUMP, p(0, "C2"), p(1, "C3"), p(2, "CA"), p(3, "C4"), p(4, "C5"));
     View v = view(3, 0, Trump.NO_TRUMP, 15, "SA HA H2 D2 D3 C6 S2 S3 S4", "",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(first), List.of(p(2, "H3")));
-    assertEquals(card("SA"), policy.choose(v).card());
+    assertEquals(card("HA"), policy.choose(v).card());
   }
 
   @Test
@@ -2413,7 +2323,8 @@ class OperatingPlanTest {
     assertEquals(card("D4"), policy.choose(guard).card());
   }
 
-  private static View twoPointPressure(int self, int contract, String hand, List<PublicPlay> trick) {
+  private static View twoPointPressure(int self, int contract, String hand,
+      List<PublicPlay> trick) {
     var opening = row(1, Trump.SPADE, p(2, "H10"), p(3, "H3"), p(4, "H2"),
         p(0, "HK"), p(1, "H4"));
     var establishesVoid = row(2, Trump.SPADE, p(0, "C9"), p(1, "C4"), p(2, "D2"),

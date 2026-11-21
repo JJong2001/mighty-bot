@@ -19,11 +19,28 @@ final class NoTrumpOperations {
   private NoTrumpOperations() {
   }
 
+  /**
+   * 자기 초기 손패와 공개 공약으로 동일한 불변 계획을 복원합니다.
+   */
+  static mighty.ai.planning.NoTrumpOpeningPlan openingPlan(DeclarerPosition position) {
+    var view = position.view();
+    List<Card> initial = initialCards(position);
+    return mighty.ai.planning.NoTrumpOpeningPlanner.plan(BiddingHand.from(initial),
+        ((DeclarerInfo) view.privateInfo()).discardedCards(), view.friendSelection(),
+        view.contract().points(), view.context().contractHistory());
+  }
+
+  private static List<Card> initialCards(DeclarerPosition position) {
+    List<Card> initial = new ArrayList<>(position.view().hand());
+    position.facts().cards().publicHistory().completedPlays().stream()
+        .filter(play -> play.seat().equals(position.view().self()))
+        .forEach(play -> initial.add(play.action().card()));
+    return initial;
+  }
+
   private static NoTrumpPlan initialPlan(DeclarerPosition position) {
     var view = position.view();
-    List<Card> initial = new ArrayList<>(view.hand());
-    position.facts().cards().publicHistory().completedPlays().stream()
-        .filter(p -> p.seat().equals(view.self())).forEach(p -> initial.add(p.action().card()));
+    List<Card> initial = initialCards(position);
     Card friend =
         view.friendSelection() instanceof CardFriend f ? f.card() : Rules.mighty(Trump.NO_TRUMP);
     var buried = ((DeclarerInfo) view.privateInfo()).discardedCards();
@@ -175,32 +192,6 @@ final class NoTrumpOperations {
             "자기 탑카에 지정 카드가 빨리기 전에 같은 문양의 낮은 카드로 호출합니다."));
   }
 
-  /**
-   * 지정 프렌드가 한쪽 연결을 맡을 수 있으면 마쪼를 다른 문양에 남깁니다.
-   */
-  static Optional<mighty.ai.play.PlayDecision> splitOpening(DeclarerPosition position) {
-    var view = position.view();
-    if (view.contract().trump() != Trump.NO_TRUMP
-        || !(view.friendSelection() instanceof CardFriend friend)
-        || !(friend.card() instanceof StandardCard target) || !position.calls(target)
-        || (!NoTrumpPlanner.splitControl(BiddingHand.from(view.hand()), target)
-        && !(view.hand().contains(Rules.mighty(Trump.NO_TRUMP))
-        && view.hand().contains(Joker.INSTANCE)
-        && view.contract().points() < 20
-        && target.suit() == position.primarySuit()
-        && position.length(target.suit()) >= 4))) {
-      return Optional.empty();
-    }
-    var low = position.inSuit(target.suit()).stream().filter(action -> action.card().points() == 0)
-        .toList();
-    if (low.isEmpty()) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        new mighty.ai.play.PlayDecision(mighty.ai.play.PlaySupport.cheapest(low, view),
-            "지정 프렌드로 상위 연결을 만들고 다른 문양에 마이티와 조커를 남깁니다."));
-  }
-
   static Optional<mighty.ai.play.PlayDecision> recoverSplitReturn(DeclarerPosition position) {
     var view = position.view();
     var facts = position.facts();
@@ -261,10 +252,7 @@ final class NoTrumpOperations {
         || !(view.friendSelection() instanceof CardFriend friend)) {
       return false;
     }
-    List<Card> initial = new ArrayList<>(view.hand());
-    position.facts().cards().publicHistory().completedPlays().stream()
-        .filter(play -> play.seat().equals(view.self()))
-        .forEach(play -> initial.add(play.action().card()));
+    List<Card> initial = initialCards(position);
     return NoTrumpPlanner.splitControl(BiddingHand.from(initial), friend.card());
   }
 
@@ -386,7 +374,7 @@ final class NoTrumpOperations {
         || view.contract().points() != mighty.game.bidding.Bid.MAX_POINTS) {
       return Optional.empty();
     }
-    return mighty.game.bidding.PublicContractHistory.latestSuit(view.context().contractHistory());
+    return openingPlan(position).returnSuit();
   }
 
   static Optional<mighty.ai.play.PlayDecision> mightyOnOpeningFriendReturn(
@@ -552,39 +540,6 @@ final class NoTrumpOperations {
         && !position.facts().teams().isAlly(last.winner())
         && last.cards().get(0).action() instanceof StandardPlay lead
         && lead.card().suit() == position.primarySuit() && lead.card().points() > 0;
-  }
-
-  /**
-   * 사이드가 이미 회수 카드라면 긴 미완성 주력에서 먼저 지원을 받습니다.
-   */
-  static Optional<mighty.ai.play.PlayDecision> openingSupport(DeclarerPosition position) {
-    var view = position.view();
-    if (view.contract().trump() != Trump.NO_TRUMP || !position.calls(
-        Rules.mighty(Trump.NO_TRUMP))) {
-      return Optional.empty();
-    }
-    var main = position.inSuit(position.primarySuit());
-    if (main.size() < 5) {
-      return Optional.empty();
-    }
-    if (view.hand().contains(Rules.gun(Trump.NO_TRUMP))) {
-      if (Rules.gun(Trump.NO_TRUMP).suit() != position.primarySuit()) {
-        return Optional.empty();
-      }
-      return main.stream().filter(a -> position.facts().isSuitTop(a.card()))
-          .max(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()))
-          .map(a -> new mighty.ai.play.PlayDecision(a, "총에 마이티를 받을 수 있도록 주력 탑카로 먼저 확인합니다."));
-    }
-    boolean readySides = position.ordinary().stream()
-        .filter(a -> ((StandardCard) a.card()).suit() != position.primarySuit())
-        .allMatch(a -> position.facts().isSuitTop(a.card()));
-    boolean blocked = main.stream().noneMatch(a -> position.facts().isSuitTop(a.card()));
-    if (!readySides || !blocked) {
-      return Optional.empty();
-    }
-    return Optional.of(
-        new mighty.ai.play.PlayDecision(mighty.ai.play.PlaySupport.cheapest(main, view),
-            "사이드 회수를 먼저 소모하지 않고 긴 주력에서 마이티 지원과 반환을 요청합니다."));
   }
 
   /**

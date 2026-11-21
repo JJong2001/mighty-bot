@@ -140,20 +140,19 @@ public final class FollowStrategy {
             reason + " 살리기 어려운 짧은 문양 점수부터 처리합니다.");
       }
     }
-    List<Action> low = actions.stream().filter(action -> action.card().points() == 0
+    CardResources resources = new CardResources(view, facts);
+    int priority = actions.stream().mapToInt(action -> resources.discardTier(action.card()))
+        .min().orElseThrow();
+    List<Action> candidates = actions.stream()
+        .filter(action -> resources.discardTier(action.card()) == priority).toList();
+    List<Action> low = candidates.stream().filter(action -> action.card().points() == 0
         && action.card() instanceof StandardCard).toList();
     if (!low.isEmpty()) {
-      CardResources resources = new CardResources(view, facts);
-      List<Action> expendable = low.stream().filter(action -> !resources.reserved(action.card()))
-          .toList();
-      if (!expendable.isEmpty()) {
-        low = expendable;
-      }
       return new PlayDecision(low.stream().min(Comparator.<Action>comparingInt(action ->
-          discardPriority(action, view, facts))).orElseThrow(), reason);
+              resources.retentionPriority(action.card()))
+          .thenComparingInt(action -> discardPriority(action, view, facts))).orElseThrow(), reason);
     }
-    CardResources resources = new CardResources(view, facts);
-    return new PlayDecision(actions.stream().min(Comparator.comparingInt(action ->
+    return new PlayDecision(candidates.stream().min(Comparator.comparingInt(action ->
         resources.preservationCost(action.card()))).orElseThrow(),
         reason + " 강제 제출에서는 회수 자원 손실을 최소화합니다.");
   }

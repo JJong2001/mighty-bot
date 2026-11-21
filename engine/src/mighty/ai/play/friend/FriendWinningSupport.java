@@ -44,6 +44,13 @@ public final class FriendWinningSupport {
       return Optional.of(new PlayDecision(PlaySupport.cheapest(ordinary, view),
           "사이드의 일반 승리 카드로 지원하고 기루에 쓸 마이티를 남깁니다."));
     }
+    if (sideLead && mighty.isPresent()) {
+      var ruff = RuffPlan.choose(view, facts, legal).filter(a -> a.card().points() == 0);
+      if (ruff.isPresent()) {
+        return Optional.of(new PlayDecision(ruff.get(),
+            "물패 간으로 지원할 수 있어 마이티를 다음 지원에 남깁니다."));
+      }
+    }
     if (mighty.isPresent()) {
       if (view.contract().trump() != Trump.NO_TRUMP) {
         var run = ordinary.stream().filter(a -> continuesRun(view, facts, (StandardCard) a.card()))

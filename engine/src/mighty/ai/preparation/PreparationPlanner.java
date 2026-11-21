@@ -62,7 +62,8 @@ public final class PreparationPlanner {
     var initialBuried = discard.choose(view);
     var initial = evaluate(retained(view.hand(), initialBuried), initialBuried);
     PreparationPlan best = plan(context.current(), initialBuried, friend.choose(
-        new FriendView(context.self(), context.current(), initial.kept(), initialBuried)));
+        new FriendView(context.self(), context.current(), initial.kept(), initialBuried,
+            context.history())));
     double bestValue = value(initial, initial.assessment(context.current().trump()),
         context.current(), context.current());
     for (Trump trump : Trump.values()) {
@@ -125,7 +126,7 @@ public final class PreparationPlanner {
         continue;
       }
       var selection = friend.choose(
-          new FriendView(context.self(), bid, hand.kept(), hand.buried()));
+          new FriendView(context.self(), bid, hand.kept(), hand.buried(), context.history()));
       if (!returnMatches(context.current(), trump, selection, context.history())) {
         continue;
       }
@@ -165,11 +166,11 @@ public final class PreparationPlanner {
     if (selected.points() == Bid.MAX_POINTS
         && selected.trump() == Trump.NO_TRUMP) {
       BiddingHand hand = BiddingHand.from(view.hand());
-      boolean firstFriend = new RuleFriendPolicy().choose(new FriendView(
-          view.self(), selected, view.hand(), view.discardedCards()))
-          == mighty.game.friend.SpecialFriend.FIRST_TRICK;
-      Suit primary = (firstFriend ? mighty.ai.planning.NoTrumpPlanner.openingFriendReturn(hand)
-          : Optional.<Suit>empty()).orElseGet(
+      var selection = new RuleFriendPolicy().choose(new FriendView(
+          view.self(), selected, view.hand(), view.discardedCards(), history));
+      var opening = mighty.ai.planning.NoTrumpOpeningPlanner.plan(hand, view.discardedCards(),
+          selection, selected.points(), history);
+      Suit primary = opening.returnSuit().orElseGet(
           () -> mighty.ai.planning.NoTrumpPlanner.signallingSuit(hand));
       Trump signal = Arrays.stream(Trump.values()).filter(t -> t.matches(primary)).findFirst()
           .orElseThrow();

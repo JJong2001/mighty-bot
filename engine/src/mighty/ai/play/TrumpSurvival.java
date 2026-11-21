@@ -34,10 +34,32 @@ public final class TrumpSurvival {
    * 상대 상위가 순서대로 소모되어도 해당 높이의 공격 기회를 남길 장수인지 확인합니다.
    */
   public boolean survives(StandardCard card) {
+    return survivesAfterSpending(card, 0);
+  }
+
+  /**
+   * 다른 기루를 먼저 간에 쓴 뒤에도 점수 기루를 지킬 받침이 남는지 확인합니다.
+   */
+  public boolean survivesAfterSpending(StandardCard card, int spentTrumps) {
     if (!view.contract().trump().matches(card.suit())) {
       return false;
     }
-    return new TrumpControl(view, facts).own().size() > threatsAbove(card);
+    return new TrumpControl(view, facts).own().size() - spentTrumps > threatsAbove(card);
+  }
+
+  /**
+   * 일반 상위에 막힌 점수는 받침 하나를 먼저 쓰면 잃을 수 있습니다. 특수카드만 남은 일반 탑카의 기존 장수 수비와 구분합니다.
+   */
+  public boolean canPreserveWhenRuffing(StandardCard card) {
+    boolean ordinaryBlocker = facts.cards().trumps().outside().stream()
+        .anyMatch(higher -> higher.rank().value() > card.rank().value());
+    if (!ordinaryBlocker) {
+      return survives(card);
+    }
+    // 더 높은 자기 점수는 이 카드 대신 희생할 받침이 아닙니다.
+    long lowerCover = new TrumpControl(view, facts).own().stream()
+        .filter(held -> held.rank().value() < card.rank().value()).count();
+    return lowerCover - 1 >= threatsAbove(card);
   }
 
 }

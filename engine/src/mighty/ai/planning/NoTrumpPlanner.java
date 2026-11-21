@@ -23,7 +23,7 @@ public final class NoTrumpPlanner {
     if (hand.contains(mighty)) {
       Optional<StandardCard> completion = completion(hand, excluded);
       int minimumGain = hand.hasJoker() ? 1 : 3;
-      if (completion.isPresent() && gain(hand, completion.get()) >= minimumGain) {
+      if (completion.isPresent() && connectionGain(hand, completion.get()) >= minimumGain) {
         friend = completion.get();
       } else if (!hand.hasJoker() && !excluded.contains(Joker.INSTANCE)) {
         friend = Joker.INSTANCE;
@@ -71,9 +71,10 @@ public final class NoTrumpPlanner {
               && !excluded.contains(c))
           .findFirst().ifPresent(candidates::add);
     }
-    return candidates.stream().max(Comparator.<StandardCard>comparingInt(c -> gain(hand, c))
-        .thenComparingInt(c -> hand.holding(c.suit()).size())
-        .thenComparingInt(c -> -c.suit().ordinal()));
+    return candidates.stream()
+        .max(Comparator.<StandardCard>comparingInt(c -> connectionGain(hand, c))
+            .thenComparingInt(c -> hand.holding(c.suit()).size())
+            .thenComparingInt(c -> -c.suit().ordinal()));
   }
 
   /**
@@ -89,19 +90,20 @@ public final class NoTrumpPlanner {
     candidates.add(preferred);
     for (Suit suit : Suit.values()) {
       missingTop(hand, excluded, suit).filter(card ->
-              gain(hand, card) >= 2 || hand.hasJoker()
+              connectionGain(hand, card) >= 2 || hand.hasJoker()
                   && hand.hasMighty(Trump.NO_TRUMP)
                   && hand.ordinaryHolding(suit, Trump.NO_TRUMP).size() >= 5
-                  || hand.hasJoker() && gain(hand, card) == 1
+                  || hand.hasJoker() && connectionGain(hand, card) == 1
                   && preferred instanceof StandardCard ordinary && !hand.contains(ordinary)
-                  && gain(hand, ordinary) == 1)
+                  && connectionGain(hand, ordinary) == 1)
           .ifPresent(candidates::add);
     }
     boolean longSelfRun = hand.hasJoker() && preferred instanceof StandardCard card
         && hand.ordinaryHolding(card.suit(), Trump.NO_TRUMP).size() >= 5;
     // 조커를 따로 처리할 수 없는 짧은 연결은 기존 지정 지원을 후보에 남깁니다.
     if (!hand.hasJoker() && !hand.hasGun(Trump.NO_TRUMP)
-        && preferred instanceof StandardCard card && !hand.contains(card) && gain(hand, card) >= 3
+        && preferred instanceof StandardCard card && !hand.contains(card)
+        && connectionGain(hand, card) >= 3
         && hand.ordinaryHolding(card.suit(), Trump.NO_TRUMP).size() < 6) {
       return List.of(preferred);
     }
@@ -131,7 +133,7 @@ public final class NoTrumpPlanner {
   public static boolean splitControl(BiddingHand hand, Card friend) {
     return hand.hasMighty(Trump.NO_TRUMP) && hand.hasJoker()
         && friend instanceof StandardCard target && !hand.contains(target)
-        && gain(hand, target) >= 2
+        && connectionGain(hand, target) >= 2
         && Arrays.stream(Suit.values()).anyMatch(suit -> suit != target.suit()
         && hand.ordinaryHolding(suit, Trump.NO_TRUMP).size() >= 4
         && hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0);
@@ -140,7 +142,7 @@ public final class NoTrumpPlanner {
   /**
    * 특정 KQ 이름 대신 지정 카드 추가로 이어지는 일반 탑카의 증가량을 셉니다.
    */
-  private static int gain(BiddingHand hand, StandardCard card) {
+  public static int connectionGain(BiddingHand hand, StandardCard card) {
     List<Card> augmented = new ArrayList<>();
     for (Suit suit : Suit.values()) {
       for (Rank rank : hand.holding(suit).ranks()) {

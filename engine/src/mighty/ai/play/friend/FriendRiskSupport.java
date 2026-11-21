@@ -7,6 +7,7 @@ import mighty.game.observation.View;
 import mighty.game.trick.PublicPlay;
 import mighty.model.StandardCard;
 import mighty.model.Joker;
+import mighty.model.Trump;
 import mighty.game.rule.Rules;
 
 /**
@@ -15,14 +16,13 @@ import mighty.game.rule.Rules;
 final class FriendRiskSupport {
 
   /**
-   * 야당의 마공은 주공의 요청으로 확정하지 않습니다. 뒤 주공이 행동할 여지를 남깁니다.
+   * 야당의 선은 문양에 관계없이 주공의 요청이 아닙니다. 뒤 주공이 행동할 여지를 남깁니다.
    */
-  static Optional<PlayDecision> onOppositionMightyAttack(View view, PlayFacts facts,
+  static Optional<PlayDecision> beforeDeclarerResponse(View view, PlayFacts facts,
       List<Action> legal) {
     var lead = view.trick().get(0);
     var mighty = Rules.mighty(view.contract().trump());
-    if (facts.conditions().leadSuit() != mighty.suit()
-        || facts.teams().isAlly(lead.seat())
+    if (facts.teams().isAlly(lead.seat())
         || !facts.remainingSeats().contains(view.context().declarer())) {
       return Optional.empty();
     }
@@ -30,20 +30,28 @@ final class FriendRiskSupport {
     if (mightyAction.isEmpty()) {
       return Optional.empty();
     }
+    // 노기루의 공개 주력은 마이티를 소모할 문양입니다. 기존의 주력 지원 순서를 유지합니다.
+    if (view.contract().trump() == Trump.NO_TRUMP
+        && FriendSupportIntent.disclosedPrimary(view).filter(suit -> suit == facts.conditions()
+        .leadSuit()).isPresent()) {
+      return Optional.empty();
+    }
     var ordinary = PlaySupport.ordinary(legal, view);
     var secured = ordinary.stream().filter(facts.winningActions()::contains)
-        .filter(action -> facts.isSecured(new PublicPlay(view.self(), action))).toList();
+        .filter(action -> facts.isSecured(new PublicPlay(view.self(), action))
+            || ((StandardCard) action.card()).suit() == facts.conditions().leadSuit()
+            && facts.isSuitTop(action.card())).toList();
     if (!secured.isEmpty()) {
       return Optional.of(new PlayDecision(PlaySupport.cheapest(secured, view),
-          "야당의 마공을 일반 승리 카드로 잡고 주공 요청에 쓸 마이티를 남깁니다."));
+          "야당의 리드를 일반 승리 카드로 잡고 주공 요청에 쓸 마이티를 남깁니다."));
     }
     var water = ordinary.stream().filter(action -> action.card().points() == 0).toList();
     if (!water.isEmpty()) {
       return Optional.of(new PlayDecision(PlaySupport.cheapest(water, view),
-          "야당의 마공에서는 뒤 주공의 의도를 확인할 수 있도록 물패로 숨습니다."));
+          "야당의 선에서는 뒤 주공의 의도를 확인할 수 있도록 물패로 숨습니다."));
     }
     return Optional.of(new PlayDecision(mightyAction.get(),
-        "마공에 안전한 물패가 없어 점수를 헌납하지 않도록 마이티로 잡습니다."));
+        "안전한 물패가 없어 점수를 헌납하지 않도록 마이티로 잡습니다."));
   }
 
   private FriendRiskSupport() {

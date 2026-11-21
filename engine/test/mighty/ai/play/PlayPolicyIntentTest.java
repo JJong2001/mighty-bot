@@ -22,8 +22,8 @@ class PlayPolicyIntentTest {
   @Test
   @DisplayName("주공이 클로버를 비웠고 공약 경계면 특수카드 소진 뒤에도 십 기루를 선출한다")
   void leadsPointCardAtDeclarerFailureBoundaryAfterSpecialsAreSpent() {
-    for (boolean sixSeats : new boolean[] {false, true}) {
-      for (int friend : new int[] {1, 2}) {
+    for (boolean sixSeats : new boolean[]{false, true}) {
+      for (int friend : new int[]{1, 2}) {
         View view = new Scenario(Trump.SPADE, friend, sixSeats, 29).viewAtTurn(36);
         PlayFacts facts = new PlayFacts(view);
 
@@ -39,7 +39,7 @@ class PlayPolicyIntentTest {
   @Test
   @DisplayName("주공이 하트를 비운 실패 경계에서는 하트 3 대신 퀸으로 점수를 압박한다")
   void leadsPointCardInDeclarerVoidSuitAtFailureBoundary() {
-    for (boolean sixSeats : new boolean[] {false, true}) {
+    for (boolean sixSeats : new boolean[]{false, true}) {
       View view = new Scenario(Trump.CLUB, 1, sixSeats, 11).viewAtTurn(31);
       PlayFacts facts = new PlayFacts(view);
 
@@ -53,7 +53,7 @@ class PlayPolicyIntentTest {
   @Test
   @DisplayName("기루 두 장 중 K는 예외로 보존하고 낮은 기루를 낸다")
   void preservesKingWhenTwoTrumpsAndSpecialThreatRemainsBehind() {
-    for (boolean sixSeats : new boolean[] {false, true}) {
+    for (boolean sixSeats : new boolean[]{false, true}) {
       View view = new Scenario(Trump.DIAMOND, 2, sixSeats, 3).viewAtTurn(7);
 
       assertTrue(view.hand().contains(CardParser.parse("DK")));
