@@ -297,7 +297,7 @@ public final class MatchSession {
         BiddingResult award = (BiddingResult) outcome;
         PlayOrder order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, seats),
             new HashSet<>(seats));
-        round = Optional.of(RoundState.start(order, award, dealtHands, kitty));
+        round = Optional.of(RoundState.start(order, award, dealtHands, kitty, bidding.history()));
         messages.add(name(award.declarer()) + " 주공 낙찰 · " + bidLabel(award.contract()));
       }
     }

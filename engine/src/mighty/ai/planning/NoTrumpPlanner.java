@@ -3,6 +3,7 @@ package mighty.ai.planning;
 import java.util.*;
 import mighty.ai.bidding.BiddingHand;
 import mighty.game.rule.Rules;
+import mighty.game.deal.DeckFactory;
 import mighty.model.*;
 
 /**
@@ -56,6 +57,10 @@ public final class NoTrumpPlanner {
         (mighty || joker || gun) && (ownTops > 0 || mighty && joker && mainLength >= 6);
     if (!mighty && !joker && ownMainRun == 0) {
       available = false;
+    }
+    if (!mighty && !joker && gun) {
+      List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+      available &= NoTrumpControlPlan.analyze(own, excluded, primary).hasIndependentReturn();
     }
     return new NoTrumpPlan(available && !excluded.contains(friend), primary, friend, breaks,
         before);
@@ -182,6 +187,24 @@ public final class NoTrumpPlanner {
             hand.ordinaryTopRunLength(s, Trump.NO_TRUMP)).thenComparingInt(s -> hand.holding(s).size()))
         .orElseThrow();
     return hand.ordinaryTopRunLength(connected, Trump.NO_TRUMP) >= 3 ? connected : primary(hand);
+  }
+
+  /**
+   * 닷노 입찰과 실제 운영이 같은 주력 문양과 상위 한 장의 빈자리를 보도록 합니다.
+   */
+  public static Optional<Suit> jokerSweepSuit(BiddingHand hand) {
+    if (!hand.hasJoker() || hand.hasMighty(Trump.NO_TRUMP)) {
+      return Optional.empty();
+    }
+    Suit suit = primary(hand);
+    var ranks = hand.ordinaryHolding(suit, Trump.NO_TRUMP).ranks();
+    int run = hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP);
+    if (ranks.size() < 4 || run < 2 || run >= ranks.size()
+        || ranks.get(run).value() < Rank.TEN.value()
+        || ranks.get(run - 1).value() - ranks.get(run).value() != 2) {
+      return Optional.empty();
+    }
+    return Optional.of(suit);
   }
 
   private static Suit primary(BiddingHand hand) {

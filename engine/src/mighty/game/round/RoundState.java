@@ -13,6 +13,7 @@ import mighty.game.PlayOrder;
 import mighty.game.Seat;
 import mighty.game.TrickNumber;
 import mighty.game.bidding.Bid;
+import mighty.game.bidding.PublicBid;
 import mighty.game.bidding.BiddingResult;
 import mighty.game.bidding.ContractChangeRules;
 import mighty.game.friend.*;
@@ -33,6 +34,8 @@ public final class RoundState {
   private final PlayOrder playOrder;
   private final Seat declarer;
   private final Bid awarded;
+  private final List<PublicBid> publicBids;
+
   private Bid contract;
   private final List<Bid> contractHistory = new ArrayList<>();
   private final Map<Seat, List<Card>> hands;
@@ -48,8 +51,9 @@ public final class RoundState {
 
   private RoundState(
       PlayOrder playOrder, BiddingResult auction,
-      Map<Seat, List<Card>> hands, List<Card> kitty
+      Map<Seat, List<Card>> hands, List<Card> kitty, List<PublicBid> publicBids
   ) {
+    this.publicBids = List.copyOf(publicBids);
     this.playOrder = playOrder;
     this.declarer = auction.declarer();
     this.awarded = auction.contract();
@@ -66,6 +70,11 @@ public final class RoundState {
       PlayOrder order, BiddingResult auction,
       Map<Seat, List<Card>> dealtHands, List<Card> kitty
   ) {
+    return start(order, auction, dealtHands, kitty, List.of());
+  }
+
+  public static RoundState start(PlayOrder order, BiddingResult auction,
+      Map<Seat, List<Card>> dealtHands, List<Card> kitty, List<PublicBid> publicBids) {
     Objects.requireNonNull(order, "플레이 순서가 필요합니다.");
     Objects.requireNonNull(auction, "낙찰 결과가 필요합니다.");
     Objects.requireNonNull(dealtHands, "배분된 손패가 필요합니다.");
@@ -87,7 +96,7 @@ public final class RoundState {
     if (new HashSet<>(allCards).size() != allCards.size()) {
       throw new IllegalArgumentException("배분된 손패와 바닥에 중복 카드가 있습니다.");
     }
-    return new RoundState(order, auction, hands, bottom);
+    return new RoundState(order, auction, hands, bottom, publicBids);
   }
 
   /**
@@ -95,6 +104,10 @@ public final class RoundState {
    */
   public Seat declarer() {
     return declarer;
+  }
+
+  public List<PublicBid> publicBids() {
+    return publicBids;
   }
 
   /**
@@ -209,7 +222,7 @@ public final class RoundState {
   public DiscardView discardView(Seat viewer) {
     requirePhase(GamePhase.DISCARD);
     requireDeclarer(viewer);
-    return new DiscardView(declarer, contract, hands.get(declarer));
+    return new DiscardView(declarer, contract, hands.get(declarer), publicBids);
   }
 
   /**
@@ -234,7 +247,7 @@ public final class RoundState {
   public FriendView friendView(Seat viewer) {
     requirePhase(GamePhase.FRIEND);
     requireDeclarer(viewer);
-    return new FriendView(declarer, contract, hands.get(declarer), discarded, contractHistory);
+    return new FriendView(declarer, contract, hands.get(declarer), discarded, contractHistory, publicBids);
   }
 
   /**
@@ -260,7 +273,7 @@ public final class RoundState {
         ? new DeclarerInfo(hands.get(self), discarded)
         : new NonDeclarerInfo(hands.get(self));
     return ObservationFactory.create(self, privateInfo, contract, selection.orElseThrow(),
-        new Context(playOrder, declarer, friendStatus, history, contractHistory), trick);
+        new Context(playOrder, declarer, friendStatus, history, contractHistory, publicBids), trick);
   }
 
   /**

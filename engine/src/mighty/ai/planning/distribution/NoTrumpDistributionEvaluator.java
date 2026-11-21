@@ -31,6 +31,10 @@ public final class NoTrumpDistributionEvaluator {
   private static NoTrumpDistribution evaluate(BiddingHand hand, Collection<? extends Card> excluded,
       Card called, NoTrumpOpeningPlan plan) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+    if (!hand.hasMighty(Trump.NO_TRUMP) && !hand.hasJoker()
+        && !mighty.ai.planning.NoTrumpPlanner.withFriend(hand, excluded, called).available()) {
+      return new NoTrumpDistribution(SAMPLES, 0, 0, 0, 0, 0, 0);
+    }
     if (own.size() != 10 || excluded.size() > 3 || excluded.contains(called)) {
       return new NoTrumpDistribution(0,
           0, 0, 0, 0, 0, 0);
@@ -169,20 +173,22 @@ public final class NoTrumpDistributionEvaluator {
       return new NoTrumpDistribution(0, 0, 0, 0, 0, 0, 0);
     }
     Suit main = mighty.ai.planning.NoTrumpPlanner.signallingSuit(hand);
+    var control = mighty.ai.planning.NoTrumpControlPlan.analyze(own, excluded, main);
     for (int index = 0; index < SAMPLES; index++) {
       var deal = excluded.size() == 3
           ? ConditionalDeal.sampleKnownBuried(own, excluded, selection, random)
           : ConditionalDeal.sample(own, excluded, selection, index, random);
       // 바닥 전에는 열 장이 바뀔 수 있어 일반 지정프의 초구를 확정 수순으로 소비하지 않습니다.
       // 초구프는 승자에 따라 소속 자체가 정해지므로 예비 평가에서도 초구가 필요합니다.
-      if (plan.opening().isPresent() && (plan.finalHand()
+      if (plan.purpose() != NoTrumpOpeningPlan.Purpose.RUN_PRIMARY
+          && plan.opening().isPresent() && (plan.finalHand()
           || selection == SpecialFriend.FIRST_TRICK)) {
         deal = deal.afterOpening(plan.opening().get());
       }
-      int lost = returnSuit.isPresent()
+      int lost = selection == SpecialFriend.FIRST_TRICK && returnSuit.isPresent()
           ? ControlRoute.openingReturnLoss(deal, main, returnSuit.get(),
           hand.ordinaryTopRunLength(main, Trump.NO_TRUMP))
-          : ControlRoute.pointsLost(deal, called);
+          : ControlRoute.pointsLost(deal, called, plan, control);
       int points = Math.max(0, 20 - lost);
       total += points;
       if (lost <= 4) {

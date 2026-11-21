@@ -30,6 +30,7 @@ public final class FollowStrategy {
     if (protectedAlly.isPresent()) {
       return protectedAlly.get();
     }
+    List<Action> winning = facts.winningActions().stream().filter(legal::contains).toList();
     boolean declarerLeading = view.trick().get(0).seat().equals(view.context().declarer());
     if (view.role() == Role.FRIEND && declarerLeading
         && view.trick().get(0).action().card() instanceof StandardCard lead
@@ -43,10 +44,10 @@ public final class FollowStrategy {
             return new PlayDecision(mighty.get(), "낮은 기루의 마이티 프렌드 호출에 응답합니다.");
           }
         }
-        List<Action> winningTrumps = facts.winningActions().stream()
+        List<Action> winningTrumps = winning.stream()
             .filter(action -> action.card() instanceof StandardCard card
                 && view.contract().trump().matches(card.suit())).toList();
-        var jokerSupport = facts.winningActions().stream().filter(a -> a.card() instanceof Joker)
+        var jokerSupport = winning.stream().filter(a -> a.card() instanceof Joker)
             .findFirst();
         if (jokerSupport.isPresent() && winningTrumps.stream()
             .noneMatch(a -> facts.isSuitTop(a.card()))) {
@@ -63,7 +64,6 @@ public final class FollowStrategy {
     if (friendSupport.isPresent()) {
       return friendSupport.get();
     }
-    List<Action> winning = facts.winningActions();
     if (!ally && !winning.isEmpty()) {
       var specialOrder = SpecialCardPlan.mightyBeforeJoker(winning, view);
       if (specialOrder.isPresent()) {

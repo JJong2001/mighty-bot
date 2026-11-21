@@ -124,6 +124,14 @@ public final class BotBridge {
     return bids.isEmpty() ? List.of(contract(req.get("contract"))) : bids;
   }
 
+  private static List<PublicBid> auction(Map<String, Object> req, List<String> order) {
+    return list(req.get("auction")).stream().map(BotBridge::obj).map(entry -> {
+      BiddingAction action = "pass".equals(str(entry, "type")) ? BidPass.INSTANCE
+          : new BidOffer(contract(entry));
+      return new PublicBid(seat(str(entry, "color"), order), action);
+    }).toList();
+  }
+
   public static Map<String, Object> choose(Map<String, Object> req) {
     for (String field : req.keySet()) {
       if (!FIELDS.contains(field)) {
@@ -152,11 +160,8 @@ public final class BotBridge {
         BiddingState b = BiddingState.start(new DealParticipants(format, participants),
             seat(str(req, "opening"),
                 order));
-        for (Object raw : list(req.get("auction"))) {
-          var p = obj(raw);
-          BiddingAction a =
-              "pass".equals(str(p, "type")) ? BidPass.INSTANCE : new BidOffer(contract(p));
-          b = b.submit(new PublicBid(seat(str(p, "color"), order), a));
+        for (var entry : auction(req, order)) {
+          b = b.submit(entry);
         }
         out.put("bidCeilings", new mighty.ai.bidding.BiddingHandEvaluator()
             .assess(mighty.ai.bidding.BiddingHand.from(hand)).stream()
@@ -172,18 +177,34 @@ public final class BotBridge {
           out.put("type", a instanceof DealMiss ? "dealMiss" : "pass");
         }
       }
+      case "before" -> {
+        if (hand.size() != 10 || new HashSet<>(hand).size() != 10) {
+          throw new IllegalArgumentException("Expected 10 distinct cards before taking the kitty");
+        }
+        Bid current = contract(req.get("contract"));
+        List<Bid> declarations = contractHistory(req);
+        Bid award = declarations.get(0);
+        Bid fifteenNoTrump = new Bid(15, Trump.NO_TRUMP);
+        Bid selected = award.equals(fifteenNoTrump) && current.equals(fifteenNoTrump)
+            ? POLICIES.preparation().beforeKittyContract(hand, award, current)
+            : PreparationPlanner.beforePublicBid(mighty.ai.bidding.BiddingHand.from(hand),
+                award, current, self, auction(req, order)).orElse(current);
+        out.put("type", "contract");
+        out.put("points", selected.points());
+        out.put("trump", trump(selected.trump()));
+      }
       case "discard" -> {
         List<Bid> declarations = contractHistory(req);
         out.put("type", "discard");
         out.put("cards", POLICIES.preparation()
-            .choose(new DiscardView(self, contract(req.get("contract")), hand),
+            .choose(new DiscardView(self, contract(req.get("contract")), hand, auction(req, order)),
                 declarations.get(0), declarations).discarded().stream().map(Card::toCode).toList());
       }
       case "after" -> {
         Bid current = contract(req.get("contract"));
         List<Bid> declarations = contractHistory(req);
         var resolution = POLICIES.preparation().resolveContract(
-            new FriendView(self, current, hand, cards(req.get("discarded")), declarations),
+            new FriendView(self, current, hand, cards(req.get("discarded")), declarations, auction(req, order)),
             declarations.get(0),
             declarations);
         Bid selected = resolution.contract();
@@ -196,7 +217,7 @@ public final class BotBridge {
       case "friend" -> {
         FriendSelection f = FRIEND.choose(
             new FriendView(self, contract(req.get("contract")), hand, cards(req.get("discarded")),
-                contractHistory(req)));
+                contractHistory(req), auction(req, order)));
         out.put("type", "friend");
         out.put("friend", f instanceof CardFriend cf ? cf.card().toCode()
             : f == SpecialFriend.NONE ? "NONE" : "FIRST");
@@ -229,7 +250,7 @@ public final class BotBridge {
         }
         View view = ObservationFactory.create(self, info, contract(req.get("contract")),
             selection(str(req, "friend")),
-            new Context(po, declarer, status, history, contractHistory(req)),
+            new Context(po, declarer, status, history, contractHistory(req), auction(req, order)),
             plays(req.get("trick"), order));
         if (mighty.game.setting.SettingProof.canDeclare(view)) {
           out.put("type", "setting");

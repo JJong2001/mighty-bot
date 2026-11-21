@@ -29,6 +29,10 @@ final class DeclarerFollowStrategy {
     var view = position.view();
     var facts = position.facts();
     var legal = position.legal();
+    var signal = HighNoTrumpPlay.follow(position);
+    if (signal.isPresent()) {
+      return signal.get();
+    }
     var primaryReturn = NoTrumpOperations.recoverPrimaryReturn(position);
     if (primaryReturn.isPresent()) {
       return primaryReturn.get();

@@ -3,6 +3,9 @@ package mighty.ai.bidding;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import mighty.ai.bidding.BidExpectedScoreEvaluator.ScoreSamples;
+import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.game.bidding.Bid;
 import mighty.game.bidding.BidOffer;
 import mighty.game.bidding.BidPass;
@@ -16,13 +19,19 @@ import mighty.model.Trump;
  */
 public final class RuleBiddingPolicy implements BiddingPolicy {
 
+  private static final Comparator<Candidate> CANDIDATE_ORDER =
+      Comparator.comparingInt(Candidate::highestSuccessScore)
+          .thenComparingInt(candidate -> candidate.assessment().preference())
+          .thenComparingInt(candidate -> -candidate.offer().bid().points());
+  private static final Comparator<ScoredCandidate> SCORE_ORDER =
+      Comparator.comparingDouble((ScoredCandidate candidate) -> candidate.samples().mean())
+          .thenComparing(ScoredCandidate::candidate, CANDIDATE_ORDER);
+
   private final RuleDealMissPolicy dealMiss = new RuleDealMissPolicy();
   private final BiddingHandEvaluator evaluator = new BiddingHandEvaluator();
   private final BidExpectedScoreEvaluator expectedScores = new BidExpectedScoreEvaluator();
 
-  private record Candidate(BidOffer offer, BidAssessment assessment, int fatalBackruns,
-                           int backruns,
-                           double expectedScore) {
+  private record Candidate(BidOffer offer, BidAssessment assessment) {
 
     int highestSuccessScore() {
       int contractCeiling = assessment.ceilingPoints();
@@ -33,7 +42,13 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
       }
       return base * multiplier;
     }
+  }
 
+  private record ScoredCandidate(Candidate candidate, ScoreSamples samples) {
+
+    BidOffer offer() {
+      return candidate.offer();
+    }
   }
 
   @Override
@@ -45,32 +60,50 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     BiddingHand hand = BiddingHand.from(view.hand());
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
-    List<BidAssessment> assessments = evaluator.assess(hand).stream()
-        .filter(BidAssessment::canCompete).toList();
-    List<Candidate> noTrump = candidates(view, hand, assessments, legal, Trump.NO_TRUMP, false);
-    if (!noTrump.isEmpty()) {
-      // 노기루 성공 운영이 보이면 바닥 뒤 기루 전환 선택권을 남기고 우선 비딩합니다.
-      return noTrump.stream().max(Comparator
-              .comparingInt(Candidate::highestSuccessScore)
-              .thenComparingInt(candidate -> candidate.assessment().preference())
-              .thenComparingInt(candidate -> -candidate.offer().bid().points()))
-          .orElseThrow().offer();
+    var contenders = evaluator.assess(hand).stream().filter(BidAssessment::canCompete)
+        .flatMap(a -> candidate(a, legal).stream()).toList();
+    var alternatives = contenders.stream().map(Candidate::offer).toList();
+    var special = ContestedSuitAuction.specialCompetition(view, hand, legal, alternatives);
+    if (special.isPresent()) {
+      return special.get().choice();
     }
-    List<Candidate> suited = assessments.stream()
-        .filter(assessment -> assessment.trump() != Trump.NO_TRUMP)
-        .flatMap(assessment -> candidates(view, hand, List.of(assessment), legal,
-            assessment.trump(), true).stream()).toList();
-    if (!suited.isEmpty()) {
-      // 노기루 각이 없을 때만 현재 잔액 기준 백런 종료 표본을 계산해 기루 후보를 비교합니다.
-      return suited.stream().min(Comparator
-              .comparingInt(Candidate::fatalBackruns)
-              .thenComparingInt(Candidate::backruns)
-              .thenComparing(Comparator.comparingInt(Candidate::highestSuccessScore).reversed())
-              .thenComparing(Comparator.comparingDouble(Candidate::expectedScore).reversed())
-              .thenComparing(Comparator.comparingInt(
-                  (Candidate candidate) -> candidate.assessment().preference()).reversed())
-              .thenComparingInt(candidate -> candidate.offer().bid().points()))
-          .orElseThrow().offer();
+    var contested = ContestedSuitAuction.signal(view, hand, alternatives);
+    if (contested.isPresent()) {
+      return ContestedSuitAuction.evaluate(view, contested.get(), alternatives).choice();
+    }
+    var route = HighNoTrumpPlan.find(hand);
+    if (route.isPresent() && view.hand().size() == 10 && route.get().competitiveShape(hand)) {
+      var plan = route.get();
+      Bid standing = view.bidding().highestBid()
+          .map(entry -> ((BidOffer) entry.action()).bid()).orElse(null);
+      boolean competing = standing != null && standing.points() >= 16;
+      if (competing && !plan.joker() && hand.hasMighty(standing.trump())
+          && standing.trump() != Trump.NO_TRUMP) {
+        return BidPass.INSTANCE;
+      }
+      if (!competing && plan.hasTwoSources(hand)) {
+        return new BidOffer(new Bid(16, plan.suited()));
+      }
+      int ceiling = plan.competitiveCeiling();
+      boolean signalled = plan.hasTwoSources(hand) && view.bidding().history().stream()
+          .anyMatch(entry -> entry.seat().equals(view.self()) && entry.action() instanceof BidOffer offer
+              && offer.bid().equals(new Bid(16, plan.suited())));
+      for (int points = signalled ? 17 : 16; points <= ceiling; points++) {
+        var offer = new BidOffer(new Bid(points, Trump.NO_TRUMP));
+        if (legal.contains(offer)) {
+          return offer;
+        }
+      }
+      return BidPass.INSTANCE;
+    }
+    var noTrump = contenders.stream()
+        .filter(candidate -> candidate.offer().bid().trump() == Trump.NO_TRUMP).toList();
+    if (!noTrump.isEmpty() && !noTrump.get(0).assessment().compareWithSuitedBids()) {
+      // 노기루 성공 운영이 보이면 바닥 뒤 기루 전환 선택권을 남기고 우선 비딩합니다.
+      return noTrump.stream().max(CANDIDATE_ORDER).orElseThrow().offer();
+    }
+    if (!contenders.isEmpty()) {
+      return bestScoringOffer(hand, contenders);
     }
     if (view.bidding().highestBid().isPresent()) {
       return BidPass.INSTANCE;
@@ -82,25 +115,32 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     return new BidOffer(new Bid(Bid.MIN_POINTS, longest));
   }
 
-  private List<Candidate> candidates(BiddingView view, BiddingHand hand,
-      List<BidAssessment> assessments, List<BidOffer> legal, Trump trump, boolean estimateRisk) {
-    return assessments.stream()
-        .filter(assessment -> assessment.trump() == trump)
-        .flatMap(assessment -> legal.stream()
-            .filter(offer -> offer.bid().trump() == assessment.trump())
-            .filter(offer -> offer.bid().points() >= assessment.openingPoints()
-                && offer.bid().points() <= assessment.ceilingPoints())
-            .min(Comparator.comparingInt(offer -> offer.bid().points()))
-            .map(offer -> {
-              var estimate = estimateRisk
-                  ? BiddingRiskPolicy.forMode(view.mode())
-                  .estimate(view, hand, offer.bid(), expectedScores)
-                  : new BidExpectedScoreEvaluator.ScoreEstimate(0, 0, 0, 0);
-              return new Candidate(offer, assessment, estimate.fatalBackruns(),
-                  estimate.backruns(),
-                  estimate.expectedDeclarerScore());
-            }).stream())
-        .toList();
+  private BidOffer bestScoringOffer(BiddingHand hand, List<Candidate> contenders) {
+    if (contenders.size() == 1) {
+      return contenders.get(0).offer();
+    }
+    // 백런의 손실까지 포함한 평균 정산점으로 상위 두 후보를 찾습니다.
+    var finalists = contenders.stream()
+        .map(candidate -> new ScoredCandidate(candidate,
+            expectedScores.initialBiddingSamples(hand, candidate.offer().bid())))
+        .sorted(SCORE_ORDER.reversed()).limit(2).toList();
+    var first = finalists.get(0);
+    var second = finalists.get(1);
+    if (!first.samples().differenceIsUncertain(second.samples())) {
+      return first.offer();
+    }
+    // 첫 표본의 오차 안에 평균 차이가 있으면 같은 배분을 더 돌려 누적 평균을 비교합니다.
+    return finalists.stream()
+        .map(finalist -> new ScoredCandidate(finalist.candidate(),
+            expectedScores.expandedBiddingSamples(hand, finalist.offer().bid())))
+        .max(SCORE_ORDER).orElseThrow().offer();
   }
 
+  private static Optional<Candidate> candidate(BidAssessment assessment, List<BidOffer> legal) {
+    return legal.stream().filter(offer -> offer.bid().trump() == assessment.trump())
+        .filter(offer -> offer.bid().points() >= assessment.openingPoints()
+            && offer.bid().points() <= assessment.ceilingPoints())
+        .min(Comparator.comparingInt(offer -> offer.bid().points()))
+        .map(offer -> new Candidate(offer, assessment));
+  }
 }

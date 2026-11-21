@@ -39,6 +39,14 @@ final class DeclarerLeadStrategy {
         return decision(action, plan.purpose().explanation());
       }
     }
+    var continuation = NoTrumpOperations.continueOpeningPlan(position);
+    if (continuation.isPresent()) {
+      return continuation.get();
+    }
+    var high = HighNoTrumpPlay.lead(position);
+    if (high.isPresent()) {
+      return high.get();
+    }
     if (view.trickNumber().value() == 1 && view.friendSelection() == SpecialFriend.FIRST_TRICK
         && view.contract().trump() != Trump.NO_TRUMP) {
       var requested = NoTrumpOperations.openingReturnSuit(position);
@@ -89,6 +97,10 @@ final class DeclarerLeadStrategy {
     if (earlyLoss.isPresent()) {
       return earlyLoss.get();
     }
+    var sweepWithReserve = NoTrumpOperations.sweepPrimaryWithMightyReserve(position);
+    if (sweepWithReserve.isPresent()) {
+      return sweepWithReserve.get();
+    }
     var mightyFirst = SpecialCardPlan.leadMighty(position.legal(), view, position.facts());
     if (mightyFirst.isPresent()) {
       return decision(mightyFirst.get(), "마이티를 먼저 사용해 문양 공격에 소모되지 않게 하고 조커의 문양 선택권을 남깁니다.");
@@ -123,10 +135,6 @@ final class DeclarerLeadStrategy {
   private static PlayDecision opening(DeclarerPosition position) {
     var view = position.view();
     List<Action> sides = position.sides();
-    var sideSupport = SupportCallPlan.choose(position);
-    if (sideSupport.isPresent()) {
-      return sideSupport.get();
-    }
     if (view.contract().trump() != Trump.NO_TRUMP) {
       var hand = mighty.ai.bidding.BiddingHand.from(view.hand());
       var buried = ((mighty.game.observation.DeclarerInfo) view.privateInfo()).discardedCards();
@@ -200,10 +208,6 @@ final class DeclarerLeadStrategy {
     var delayed = NoTrumpOperations.delaySupport(position);
     if (delayed.isPresent()) {
       return delayed.get();
-    }
-    var sideSupport = SupportCallPlan.choose(position);
-    if (sideSupport.isPresent()) {
-      return sideSupport.get();
     }
     var splitContinuation = NoTrumpOperations.continueSplitWithJoker(position);
     if (splitContinuation.isPresent()) {

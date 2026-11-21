@@ -12,8 +12,78 @@ import mighty.game.observation.BiddingView;
 import mighty.model.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RuleBiddingPolicyTest {
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "SK S3 HJ H10 H9 CA CK CJ C2 JK"
+  })
+  @DisplayName("조커와 클로버 주력이 있는 패는 닷노로 열고 닷기루에도 닷노를 부른다")
+  void opensAndCompetesOnlyToFifteenNoTrumpWithDevelopableSuits(String cards) {
+    var owned = mighty.data.CardParser.parseList(cards);
+    var policy = new RuleBiddingPolicy();
+    var opening = state();
+    var contested = opening.submit(
+        new PublicBid(new Seat(0), new BidOffer(new Bid(15, Trump.CLUB))));
+    var expected = new BidOffer(new Bid(15, Trump.NO_TRUMP));
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(0), owned, 40, opening)));
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(1), owned, 40, contested)));
+    var hand = BiddingHand.from(owned);
+    var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
+        List.of());
+    assertEquals(15, assessment.ceilingPoints());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "SK S3 HJ H10 H9 CA CK C10 C2 JK",
+      "SA SQ S5 S3 D10 HA HK H3 H2 CK"
+  })
+  @DisplayName("별도 회수 탑이 없거나 조커 한 번으로 주력 점수 카드가 살아나지 않으면 이 경로로 입찰하지 않는다")
+  void requiresBothDevelopmentAndReentry(String cards) {
+    var hand = BiddingHand.from(mighty.data.CardParser.parseList(cards));
+    var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
+        List.of());
+    assertFalse(assessment.canCompete());
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "SQ S3 HJ H10 H9 CA CK CJ C2 JK, NO_TRUMP",
+      "S4 S3 H4 H8 H9 CA CK CJ C2 JK, CLUB"
+  })
+  @DisplayName("별도 회수 탑이 없는 주력 패는 닷노와 기루의 정산점을 비교해 입찰한다")
+  void comparesJokerSweepAgainstSuitedBid(String cards, Trump selected) {
+    var owned = mighty.data.CardParser.parseList(cards);
+    var hand = BiddingHand.from(owned);
+    var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
+        List.of());
+    assertTrue(assessment.compareWithSuitedBids());
+    assertEquals(15, assessment.ceilingPoints());
+    assertEquals(new BidOffer(new Bid(15, selected)),
+        new RuleBiddingPolicy().choose(new BiddingView(new Seat(0), owned, 40, state())));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "SA SK S5 S3 D10 HA HK H3 H2 CK, 15, 16, NO_TRUMP",
+      "SA SK S5 S3 D10 HA HK HQ H2 CK, 16, 0, NO_TRUMP",
+      "JK SK S5 S3 D10 HA HK HQ H2 CK, 16, 16, NO_TRUMP",
+      "JK SK S5 S3 D10 HA HK HQ H2 CK, 17, 17, NO_TRUMP",
+      "JK SK S5 S3 D10 HA HK HQ H2 CK, 18, 0, NO_TRUMP",
+      "SA SK S5 S3 D10 HA HK HQ H2 JK, 15, 16, HEART",
+      "SA SK S5 S3 D10 HA HK HQ H2 JK, 17, 17, NO_TRUMP"
+  })
+  void comparesFriendProspectWithTakingContract(String cards, int standing, int points, Trump trump) {
+    var auction = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(standing, Trump.CLUB))));
+    var action = new RuleBiddingPolicy().choose(new BiddingView(new Seat(1),
+        mighty.data.CardParser.parseList(cards), 40, auction));
+    assertEquals(points == 0 ? BidPass.INSTANCE : new BidOffer(new Bid(points, trump)), action);
+  }
 
   @Test
   @DisplayName("마이티 문양의 K 초구로 여섯 장 K 기루의 엿 경쟁에 진입한다")
@@ -48,16 +118,127 @@ class RuleBiddingPolicyTest {
   @DisplayName("분산 AK와 조커의 일곱 구 자원은 닷노로 진입하고 엿노까지 경쟁한다")
   void scatteredTopRunsAndJokerCompeteToSixteenNoTrump() {
     var owned = mighty.data.CardParser.parseList("S5 DK DA H2 H8 HA C4 CK CA JK");
+    var hand = BiddingHand.from(owned);
+    assertEquals(5, FlexibleNoTrumpOpening.ordinaryWins(hand));
+    assertEquals(2, hand.ordinaryTopRunLength(Suit.CLUB, Trump.NO_TRUMP));
+    assertTrue(FlexibleNoTrumpOpening.supportedBySpreadTops(hand, 16));
     var policy = new RuleBiddingPolicy();
     assertEquals(new BidOffer(new Bid(15, Trump.NO_TRUMP)),
         policy.choose(new BiddingView(new Seat(0), owned, 40, state())));
     var previous = state().submit(
         new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB))));
+    assertTrue(ContestedSuitAuction.signal(new BiddingView(new Seat(1), owned, 40, previous),
+        hand, List.of(new BidOffer(new Bid(16, Trump.NO_TRUMP)))).isEmpty());
     assertEquals(new BidOffer(new Bid(16, Trump.NO_TRUMP)),
         policy.choose(new BiddingView(new Seat(1), owned, 40, previous)));
     var ceiling = state().submit(
         new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.NO_TRUMP))));
     assertEquals(BidPass.INSTANCE, policy.choose(new BiddingView(new Seat(1), owned, 40, ceiling)));
+  }
+
+  @Test
+  void measuresSameSuitCompetitionUsingPublicBidAndActualFriendInEachDeal() {
+    var owned = mighty.data.CardParser.parseList("SA SK CK CQ CJ C7 C2 D5 H4 H2");
+    var hand = BiddingHand.from(owned);
+    for (var bid : List.of(new Bid(15, Trump.CLUB), new Bid(16, Trump.NO_TRUMP),
+        new Bid(16, Trump.DIAMOND))) {
+      var bidding = state().submit(new PublicBid(new Seat(0), new BidOffer(bid)));
+      var view = new BiddingView(new Seat(1), owned, 40, bidding);
+      var counter = new BidOffer(new Bid(17, Trump.CLUB));
+      assertTrue(ContestedSuitAuction.signal(view, hand, List.of(counter)).isEmpty());
+    }
+    var signal = new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB)));
+    var auction = state().submit(signal);
+    var view = new BiddingView(new Seat(1), owned, 40, auction);
+    var counter = new BidOffer(new Bid(17, Trump.CLUB));
+    assertEquals(signal, ContestedSuitAuction.signal(view, hand, List.of(counter)).orElseThrow());
+    var comparison = ContestedSuitAuction.evaluate(view, signal, List.of(counter));
+    var outcome = comparison.estimates().get(counter);
+    var ally = outcome.bidderIsAlly();
+    var enemy = outcome.bidderIsOpponent();
+    assertEquals(32, ally.deals + enemy.deals);
+    assertTrue(ally.deals > 0 && enemy.deals > 0);
+    // 같은 패로 맞기루를 부르면 선입찰자가 야당인 배분에서 성공률과 내 정산점이 더 낮습니다.
+    assertTrue((long) enemy.successes * ally.deals < (long) ally.successes * enemy.deals);
+    assertTrue((long) enemy.settlement * ally.deals < (long) ally.settlement * enemy.deals);
+    assertTrue(comparison.estimates().get(BidPass.INSTANCE).total() > outcome.total());
+    assertEquals(BidPass.INSTANCE, comparison.choice());
+    assertEquals(comparison.choice(), new RuleBiddingPolicy().choose(view));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"16, H3", "17, HQ"})
+  void pricesNoTrumpWhenOpponentBidTheRunningSuitWithoutALegalSuitedCandidate(int points,
+      String thirdHeart) {
+    var owned = mighty.data.CardParser.parseList("SK S5 S3 D10 HA HK H2 CK JK " + thirdHeart);
+    var hand = BiddingHand.from(owned);
+    var noTrump = new BidOffer(new Bid(points, Trump.NO_TRUMP));
+    assertEquals(16, SuitBidEvaluator.assess(CandidateResources.from(hand, Trump.HEART))
+        .ceilingPoints());
+    var signal = new PublicBid(new Seat(0), new BidOffer(new Bid(points, Trump.HEART)));
+    var view = new BiddingView(new Seat(1), owned, 40, state().submit(signal));
+    assertEquals(signal, ContestedSuitAuction.signal(view, hand, List.of(noTrump)).orElseThrow());
+    assertTrue(ContestedSuitAuction.signal(view, hand, List.of()).isEmpty());
+    var comparison = ContestedSuitAuction.evaluate(view, signal, List.of(noTrump));
+    var outcome = comparison.estimates().get(noTrump);
+    assertEquals(32, outcome.bidderIsAlly().deals + outcome.bidderIsOpponent().deals);
+    System.out.printf("%dNT 32판 정산 합계 %d, 패스 %d, 선택 %s%n", points, outcome.total(),
+        comparison.estimates().get(BidPass.INSTANCE).total(), comparison.choice());
+    assertEquals(comparison.choice(), new RuleBiddingPolicy().choose(view));
+    for (var other : List.of(new Bid(15, Trump.HEART), new Bid(points, Trump.CLUB))) {
+      var different = new BiddingView(new Seat(1), owned, 40,
+          state().submit(new PublicBid(new Seat(0), new BidOffer(other))));
+      assertTrue(ContestedSuitAuction.signal(different, hand, List.of(noTrump)).isEmpty());
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "SK SQ CA CK C4 C2 JK H2 H3 D5, DIAMOND, 17, NO_TRUMP",
+      "SA JK DA DK D4 D2 H2 H3 C2 S5, CLUB, 18, NO_TRUMP",
+      "DA HA HK H10 H7 H4 H2 C4 S5 S2, DIAMOND, 18, HEART"
+  })
+  void comparesSupportOrLimitedLossWithLettingBidderPlay(String cards, Trump standing,
+      int points, Trump candidateTrump) {
+    var owned = mighty.data.CardParser.parseList(cards);
+    int rival = points == 18 && candidateTrump == Trump.NO_TRUMP ? 18 : 17;
+    var bid = new Bid(rival, standing);
+    var auction = state().submit(new PublicBid(new Seat(0), new BidOffer(bid)));
+    var view = new BiddingView(new Seat(1), owned, 40, auction);
+    var hand = BiddingHand.from(owned);
+    var legal = LegalBiddingActions.bidAndPassActions(auction).stream()
+        .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
+    var comparison = ContestedSuitAuction.specialCompetition(view, hand, legal, List.of()).orElseThrow();
+    var candidate = new BidOffer(new Bid(points, candidateTrump));
+    var route = comparison.estimates().get(candidate);
+    assertNotNull(route);
+    assertEquals(32, route.bidderIsAlly().deals + route.bidderIsOpponent().deals);
+    var pass = comparison.estimates().get(BidPass.INSTANCE);
+    assertTrue(comparison.estimates().get(comparison.choice()).total() >= pass.total());
+    var actual = new RuleBiddingPolicy().choose(view);
+    System.out.printf("%s vs %s: offer=%d pass=%d allies=%d/%d action=%s%n", cards, bid,
+        route.total(), pass.total(), route.bidderIsAlly().deals, 32, actual);
+    assertEquals(comparison.choice(), actual);
+    if (candidateTrump == Trump.NO_TRUMP) {
+      assertTrue(route.bidderIsAlly().deals > 0 && route.bidderIsOpponent().deals > 0);
+      assertTrue(mighty.ai.planning.BidderSupportPlan.find(hand, view.self(), List.of(
+          new PublicBid(new Seat(0), new BidOffer(new Bid(16, standing))))).isEmpty());
+    }
+  }
+
+  @Test
+  void takesTheSmallerLossEvenIfContractUsuallyFails() {
+    var counter = new BidOffer(new Bid(18, Trump.HEART));
+    var pass = new ContestedSuitAuction.Estimate();
+    var defend = new ContestedSuitAuction.Estimate();
+    // 17♦를 주고 야당으로 10칩을 잃거나, 18♥ 주공으로 두 점 미달해 4칩을 잃는 예시입니다.
+    pass.bidderIsOpponent().settlement = -10;
+    defend.bidderIsOpponent().settlement = -4;
+    var choices = java.util.Map.<BiddingAction, ContestedSuitAuction.Estimate>of(
+        BidPass.INSTANCE, pass, counter, defend);
+    assertEquals(counter, ContestedSuitAuction.bestChoice(choices));
+    defend.bidderIsOpponent().settlement = -12;
+    assertEquals(BidPass.INSTANCE, ContestedSuitAuction.bestChoice(choices));
   }
 
   private static List<Card> hand() {
@@ -121,6 +302,42 @@ class RuleBiddingPolicyTest {
 
     assertEquals(new BidOffer(new Bid(15, Trump.DIAMOND)),
         policy.choose(new BiddingView(new Seat(0), owned, 40, state())));
+  }
+
+  @Test
+  @DisplayName("첫 표본이 애매하면 같은 바닥부터 누적해 기루 후보를 다시 비교한다")
+  void comparesMoreDealsForUncertainBids() {
+    var hand = BiddingHand.from(mighty.data.CardParser.parseList("SA S10 S9 S6 D3 H2 CJ C8 C4 C2"));
+    var evaluator = new BidExpectedScoreEvaluator();
+    var clubs = new Bid(15, Trump.CLUB);
+    var spades = new Bid(15, Trump.SPADE);
+    var firstClubs = evaluator.initialBiddingSamples(hand, clubs);
+    var firstSpades = evaluator.initialBiddingSamples(hand, spades);
+
+    assertTrue(firstSpades.mean() > firstClubs.mean());
+    assertTrue(firstSpades.differenceIsUncertain(firstClubs));
+
+    var expandedClubs = evaluator.expandedBiddingSamples(hand, clubs);
+    var expandedSpades = evaluator.expandedBiddingSamples(hand, spades);
+    assertEquals(1000, expandedClubs.kittySettlements().size() * expandedClubs.dealsPerKitty());
+    assertEquals(1000, expandedSpades.kittySettlements().size() * expandedSpades.dealsPerKitty());
+    assertEquals(firstClubs.kittySettlements(), expandedClubs.kittySettlements().subList(0, 10));
+    assertEquals(firstSpades.kittySettlements(), expandedSpades.kittySettlements().subList(0, 10));
+    assertTrue(expandedClubs.mean() > expandedSpades.mean());
+    assertEquals(firstClubs, evaluator.initialBiddingSamples(hand, clubs));
+    assertEquals(firstSpades, evaluator.initialBiddingSamples(hand, spades));
+  }
+
+  @Test
+  @DisplayName("바닥별 정산점의 차이가 일정하면 첫 표본으로 비교를 마친다")
+  void confidentlySeparatesConsistentPairedScores() {
+    var leader = new BidExpectedScoreEvaluator.ScoreSamples(
+        List.of(25, 40, -30, 10, 5, 0, 30, 20, -10, 0), 10);
+    var other = new BidExpectedScoreEvaluator.ScoreSamples(
+        leader.kittySettlements().stream().map(total -> total - 10).toList(), 10);
+
+    assertFalse(leader.differenceIsUncertain(other));
+    assertTrue(leader.differenceIsUncertain(leader));
   }
 
   @Test

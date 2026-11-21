@@ -1,5 +1,6 @@
 package mighty.ai.play.friend;
 
+import mighty.game.friend.UnrevealedFriend;
 import mighty.model.Trump;
 import mighty.model.StandardCard;
 import mighty.model.Rank;
@@ -20,6 +21,19 @@ import mighty.game.observation.View;
 final class FriendFollowStrategy {
 
   static PlayDecision choose(View view, PlayFacts facts, List<Action> legal) {
+    if (view.contract().trump() == Trump.NO_TRUMP && view.contract().points() >= 16
+        && view.context().friendStatus() instanceof UnrevealedFriend
+        && view.trick().get(0).seat().equals(view.context().declarer())
+        && view.trick().get(0).action().card() instanceof StandardCard lead && lead.points() == 0
+        && view.friendSelection() instanceof CardFriend friend
+        && friend.card() instanceof StandardCard called && called.suit() == lead.suit()
+        && !called.equals(Rules.mighty(Trump.NO_TRUMP))) {
+      var response = facts.winningActions().stream().filter(legal::contains)
+          .filter(action -> action.card().equals(called)).findFirst();
+      if (response.isPresent()) {
+        return new PlayDecision(response.get(), "주공이 지정 문양의 물패로 찾으면 지정 카드로 선을 받습니다.");
+      }
+    }
     var openingSignal = respectOpeningSignal(view, facts, legal);
     if (openingSignal.isPresent()) {
       return openingSignal.get();
@@ -28,7 +42,7 @@ final class FriendFollowStrategy {
     if (waiting.isPresent()) {
       return waiting.get();
     }
-    var requested = FriendSupportIntent.requestedSpecial(view, facts);
+    var requested = FriendSupportIntent.requestedSpecial(view, facts).filter(legal::contains);
     if (requested.isPresent()) {
       return new PlayDecision(requested.get(),
           "주공이 요청한 특수카드로 응답하고 일반 카드는 반환과 후속 승리에 남깁니다.");

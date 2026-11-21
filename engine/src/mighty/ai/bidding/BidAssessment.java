@@ -14,8 +14,14 @@ public record BidAssessment(
     int openingPoints,
     int ceilingPoints,
     int preference,
-    List<String> reasons
+    List<String> reasons,
+    boolean compareWithSuitedBids
 ) {
+
+  public BidAssessment(Trump trump, boolean canCompete, int openingPoints, int ceilingPoints,
+      int preference, List<String> reasons) {
+    this(trump, canCompete, openingPoints, ceilingPoints, preference, reasons, false);
+  }
 
   public BidAssessment {
     Objects.requireNonNull(trump);

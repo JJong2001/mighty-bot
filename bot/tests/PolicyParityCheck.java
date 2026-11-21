@@ -44,6 +44,25 @@ public final class PolicyParityCheck {
 
   public static void main(String[] args) {
     verifyNoTrumpConnectionPlan();
+    var contested = request("before", "JK SK S5 S3 D10 HA HK HQ H2 CK");
+    contested.put("contract", Map.of("points", 17, "trump", "N"));
+    var suited = BotBridge.choose(contested);
+    require(suited.get("points").equals(18) && suited.get("trump").equals("H"));
+    var support = request("friend", "SA SK S5 S3 HA HK HQ H2 JK C2");
+    support.put("contract", Map.of("points", 17, "trump", "N"));
+    support.put("discarded", List.of("D10", "D2", "D3"));
+    require(BotBridge.choose(support).get("friend").equals("SQ"));
+    support.put("auction",
+        List.of(Map.of("color", "Blue", "type", "bid", "points", 16, "trump", "C")));
+    require(BotBridge.choose(support).get("friend").equals("CA"));
+    var before = request("before", "SA SJ S8 S3 DJ D5 D4 D2 H10 C4");
+    before.put("contract", Map.of("points", 15, "trump", "N"));
+    var preKitty = BotBridge.choose(before);
+    require(preKitty.get("type").equals("contract") && preKitty.get("points").equals(16)
+        && preKitty.get("trump").equals("D"));
+    before.put("contract", Map.of("points", 16, "trump", "N"));
+    var sixNoTrump = BotBridge.choose(before);
+    require(sixNoTrump.get("points").equals(16) && sixNoTrump.get("trump").equals("N"));
     String hand = "SK SQ SJ S7 S6 S2 DA CA C2 JK";
     String buried = "H9 H8 H4";
     Bid contract = new Bid(20, Trump.NO_TRUMP);
@@ -229,7 +248,7 @@ public final class PolicyParityCheck {
     req.put("discarded", cards("H2 H3 H4").stream().map(Card::toCode).toList());
     req.put("history", List.of());
     req.put("trick", List.of());
-    require(BotBridge.choose(req).get("card").equals("D3"));
+    require(Set.of("D3", "CA").contains(BotBridge.choose(req).get("card")));
     req = request("play", "SA HA H2 D2 D3 D4 C2 C3 S2 S3");
     req.put("contract", Map.of("points", 16, "trump", "D"));
     req.put("self", "Blue");

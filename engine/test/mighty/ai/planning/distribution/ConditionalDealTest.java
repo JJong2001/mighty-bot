@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.*;
 import mighty.data.CardParser;
+import mighty.ai.planning.NoTrumpControlPlan;
+import mighty.ai.planning.NoTrumpOpeningPlan;
 import mighty.game.Seat;
 import mighty.game.deal.DeckFactory;
 import mighty.game.friend.CardFriend;
@@ -11,6 +13,27 @@ import mighty.model.*;
 import org.junit.jupiter.api.Test;
 
 class ConditionalDealTest {
+
+  private static int lossWithoutOpening(ConditionalDeal deal, Card called) {
+    var plan = new NoTrumpOpeningPlan(new CardFriend(called), Optional.empty(), Optional.empty(),
+        true, false, NoTrumpOpeningPlan.Purpose.DEFER);
+    return ControlRoute.pointsLost(deal, called, plan,
+        NoTrumpControlPlan.analyze(deal.hands().get(new Seat(0)), deal.buried()));
+  }
+
+  @Test
+  void friendsMightyIsNotSpentOnDeclarersOrdinaryTop() {
+    var own = CardParser.parseList("H4 H5 H6 H8 HJ HQ HK HA C3 DA");
+    var buried = CardParser.parseList("S2 S3 S4");
+    var mighty = CardParser.parse("SA");
+    for (int seed = 0; seed < 32; seed++) {
+      var before = ConditionalDeal.sampleKnownBuried(own, buried, new CardFriend(mighty),
+          new Random(seed));
+      var after = before.afterOpening((StandardCard) CardParser.parse("HA"));
+      assertTrue(after.hands().get(new Seat(after.friendIndex())).contains(mighty));
+    }
+  }
+
 
   @Test
   void consumedMightyIsNotAvailableForAnotherSupportRound() {
@@ -22,8 +45,8 @@ class ConditionalDealTest {
           new Random(seed));
       var after = before.afterOpening((StandardCard) CardParser.parse("D3"));
       assertFalse(after.hands().get(new Seat(after.friendIndex())).contains(mighty));
-      assertEquals(ControlRoute.pointsLost(after, CardParser.parse("DA")),
-          ControlRoute.pointsLost(after, mighty));
+      assertEquals(lossWithoutOpening(after, CardParser.parse("DA")),
+          lossWithoutOpening(after, mighty));
     }
   }
 
@@ -98,7 +121,7 @@ class ConditionalDealTest {
         hands.get(new Seat(seat)).add(pool.next());
       }
     }
-    int cooperative = ControlRoute.pointsLost(new ConditionalDeal(hands, buried, 1),
+    int cooperative = lossWithoutOpening(new ConditionalDeal(hands, buried, 1),
         CardParser.parse("SA"));
     var friend = hands.get(new Seat(1));
     var enemy = hands.get(new Seat(2));
@@ -107,7 +130,7 @@ class ConditionalDealTest {
       friend.set(1 + index, enemy.get(3 + index));
       enemy.set(3 + index, guard);
     }
-    int hostile = ControlRoute.pointsLost(new ConditionalDeal(hands, buried, 1),
+    int hostile = lossWithoutOpening(new ConditionalDeal(hands, buried, 1),
         CardParser.parse("SA"));
     assertEquals(0, cooperative);
     assertTrue(hostile > cooperative);

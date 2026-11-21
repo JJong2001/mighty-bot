@@ -27,8 +27,10 @@ public final class RoundPreparation {
   ) throws E {
     var actor = round.currentSeat().orElseThrow();
     var history = round.contractHistory();
-    Bid selected = planner.beforeKittyContract(round.beforeKittyHand(actor), history.get(0),
-        round.contract());
+    var hand = round.beforeKittyHand(actor);
+    Bid selected = PreparationPlanner.beforePublicBid(mighty.ai.bidding.BiddingHand.from(hand),
+        history.get(0), round.contract(), actor, round.publicBids()).orElseGet(() ->
+        planner.beforeKittyContract(hand, history.get(0), round.contract()));
     if (!selected.equals(round.contract())) {
       revise.apply(selected);
     }
@@ -41,9 +43,10 @@ public final class RoundPreparation {
   ) throws E {
     var actor = round.currentSeat().orElseThrow();
     var history = round.contractHistory();
-    var plan = planner.choose(round.discardView(actor), history.get(0), history);
-    if (!plan.contract().equals(round.contract())) {
-      revise.apply(plan.contract());
+    var view = round.discardView(actor);
+    var plan = planner.choose(view, history.get(0), history);
+    for (var bid : PreparationPlanner.discardDeclarations(view, history.get(0), history, plan)) {
+      revise.apply(bid);
     }
     submit.apply(plan.discarded());
   }

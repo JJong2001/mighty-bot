@@ -2,6 +2,10 @@ package mighty.ai.bidding;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import mighty.ai.planning.NoTrumpPlan;
+import mighty.ai.planning.NoTrumpPlanner;
+import mighty.game.rule.Rules;
 import mighty.model.*;
 
 /**
@@ -37,10 +41,41 @@ final class FlexibleNoTrumpOpening {
         "바닥의 미확인 카드는 승리 수에 더하지 않고 실제 버리기 이후 공약을 다시 평가합니다."));
   }
 
-  private static int ordinaryWins(BiddingHand hand) {
+  static boolean supportedBySpreadTops(BiddingHand hand, int points) {
+    return available(hand) && Arrays.stream(Suit.values())
+        .filter(suit -> hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0).count() >= 2
+        && assess(hand).ceilingPoints() >= points;
+  }
+
+  static int ordinaryWins(BiddingHand hand) {
     return Arrays.stream(Suit.values())
         .mapToInt(suit -> hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP))
         .sum();
+  }
+
+  static Optional<String> fifteenPointRoute(BiddingHand hand, NoTrumpPlan plan) {
+    Suit main = plan.primary();
+    if (!plan.available() || hand.ordinaryHolding(main, Trump.NO_TRUMP).size() < 4
+        || hand.ordinaryTopRunLength(main, Trump.NO_TRUMP) < 2) {
+      return Optional.empty();
+    }
+    var mighty = Rules.mighty(Trump.NO_TRUMP);
+    if (plan.friend().equals(mighty) && !hand.contains(mighty) && hand.hasJoker()) {
+      // 주력의 한 장벽을 뽑으면 내 점수 카드가 탑이 되고, 다른 문양으로도 선을 잡을 수 있습니다.
+      boolean sideEntry = Arrays.stream(Suit.values()).anyMatch(suit -> suit != main
+          && hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0);
+      if (sideEntry && NoTrumpPlanner.jokerSweepSuit(hand).isPresent()) {
+        return Optional.of("주력의 한 장벽을 조커로 뽑고 별도 문양의 탑과 마이티 프렌드로 회수합니다.");
+      }
+    }
+    // 조커프를 찾은 뒤 반환받을 긴 문양에 일반 탑이 있어 마이티를 아낄 수 있습니다.
+    Suit returned = mighty.suit();
+    if (plan.friend() instanceof Joker && hand.contains(mighty) && main != returned
+        && hand.holding(returned).size() >= 4
+        && hand.ordinaryTopRunLength(returned, Trump.NO_TRUMP) > 0) {
+      return Optional.of("주력의 연속 탑을 돌리고 조커 프렌드의 반환을 일반 탑으로 받아 마이티를 남깁니다.");
+    }
+    return Optional.empty();
   }
 
 }

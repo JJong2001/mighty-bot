@@ -4,6 +4,7 @@ import static mighty.ai.play.PlayTestFixture.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
+import java.util.Set;
 import mighty.game.Role;
 import mighty.game.Seat;
 import mighty.game.bidding.Bid;
@@ -16,6 +17,7 @@ import mighty.game.observation.View;
 import mighty.model.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -25,6 +27,122 @@ import org.junit.jupiter.params.provider.ValueSource;
 class PlayFeedbackRegressionTest {
 
   private final RulePlayPolicy policy = new RulePlayPolicy();
+
+  @ParameterizedTest
+  @CsvSource({"C, Q, J", "C, 4, JK", "H, Q, J", "H, 4, JK"})
+  void cashesPrimaryBeforeCallingMighty(String suit, String lastRank, String next) {
+    var trump = Trump.NO_TRUMP;
+    var friend = new CardFriend(card("SA"));
+    var hidden = UnrevealedFriend.INSTANCE;
+    String side = suit.equals("C") ? "H" : "C";
+    String buried = side + "J " + side + "10 " + side + "2";
+    String rest = suit + "J " + suit + "6 " + suit + "2 SK S3 D4 " + side + "9 JK";
+    var first = row(1, trump, p(0, suit + "A"), p(1, suit + "3"), p(2, suit + "5"),
+        p(3, suit + "7"), p(4, suit + "8"));
+    var second = row(2, trump, p(0, suit + "K"), p(1, suit + "9"), p(2, suit + "10"),
+        p(3, "D3"), p(4, suit + lastRank));
+    assertEquals(card(suit + "A"), policy.choose(view(0, 0, trump, 15,
+        suit + "A " + suit + "K " + rest, buried, friend, hidden, List.of(), List.of())).card());
+    assertEquals(card(suit + "K"), policy.choose(view(0, 0, trump, 15,
+        suit + "K " + rest, buried, friend, hidden, List.of(first), List.of())).card());
+    var third = policy.choose(view(0, 0, trump, 15, rest, buried, friend, hidden,
+        List.of(first, second), List.of()));
+    if (next.equals("JK")) {
+      assertEquals(new JokerLead(((StandardCard) card(suit + "J")).suit()), third);
+    } else {
+      assertEquals(card(suit + next), third.card());
+    }
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "HJ, HQ, 15, true",
+      "C3, HQ, 15, false",
+      "H10, HJ, 15, false",
+      "HJ, HQ, 16, false"
+  })
+  void sweepsOneBlockerBeforeOppositionCanCallJoker(String earlyDiscard, String top,
+      int bid, boolean sweeps) {
+    var first = row(1, Trump.NO_TRUMP, p(0, "D2"), p(1, "DA"), p(2, "D6"), p(3, "D4"),
+        p(4, "DJ"));
+    var second = row(2, Trump.NO_TRUMP, p(1, "D3"), p(2, "D7"), p(3, "D5"),
+        p(4, earlyDiscard), p(0, "DK"));
+    var third = row(3, Trump.NO_TRUMP, p(0, "SA"), p(1, "SJ"), p(2, "S7"), p(3, "S2"),
+        p(4, "S3"));
+    var fourth = row(4, Trump.NO_TRUMP, p(0, "HA"), p(1, "H8"), p(2, "H9"), p(3, "H7"),
+        p(4, "H5"));
+    View view = view(0, 0, Trump.NO_TRUMP, bid, "JK " + top + " H3 H2 C6 C5", "S6 C10 S5",
+        new CardFriend(card("DA")), new RevealedFriend(new Seat(1)),
+        List.of(first, second, third, fourth), List.of());
+
+    if (sweeps) {
+      assertEquals(new JokerLead(Suit.HEART), policy.choose(view));
+    } else {
+      assertEquals(card("H2"), policy.choose(view).card());
+    }
+  }
+
+  @Test
+  void playsTopThenJokerBeforeSpendingMightyAfterFriendReturns() {
+    var first = row(1, Trump.NO_TRUMP, p(0, "D2"), p(1, "DA"), p(2, "D6"), p(3, "D4"),
+        p(4, "DJ"));
+    var second = row(2, Trump.NO_TRUMP, p(1, "D3"), p(2, "D7"), p(3, "D5"), p(4, "HJ"),
+        p(0, "DK"));
+    var third = row(3, Trump.NO_TRUMP, p(0, "HA"), p(1, "H8"), p(2, "H9"), p(3, "H7"),
+        p(4, "H5"));
+    var selection = new CardFriend(card("DA"));
+    var friend = new RevealedFriend(new Seat(1));
+    View afterReturn = view(0, 0, Trump.NO_TRUMP, 15, "SA HA HQ H3 H2 C6 C5 JK",
+        "S6 C10 S5", selection, friend, List.of(first, second), List.of());
+    View afterTop = view(0, 0, Trump.NO_TRUMP, 15, "SA HQ H3 H2 C6 C5 JK",
+        "S6 C10 S5", selection, friend, List.of(first, second, third), List.of());
+
+    assertEquals(card("HA"), policy.choose(afterReturn).card());
+    assertEquals(new JokerLead(Suit.HEART), policy.choose(afterTop));
+  }
+
+  @Test
+  void preservesJokerAfterOrdinarySideSupportOnLowTrumpLead() {
+    var first = row(1, Trump.DIAMOND, p(0, "HA"), p(1, "H2"), p(2, "H7"), p(3, "H4"),
+        p(4, "H9"));
+    var second = row(2, Trump.DIAMOND, p(0, "DK"), p(1, "D5"), p(2, "D10"), p(3, "DJ"),
+        p(4, "D4"));
+    var third = row(3, Trump.DIAMOND, p(0, "S7"), p(1, "S5"), p(2, "SK"), p(3, "SQ"),
+        p(4, "S6"));
+    var fourth = row(4, Trump.DIAMOND, p(2, "D2"), p(3, "D6"), p(4, "D8"), p(0, "DQ"),
+        p(1, "H5"));
+    View view = view(2, 0, Trump.DIAMOND, 16, "JK S3 H3 C4 C5 C6", "",
+        new CardFriend(Joker.INSTANCE), UnrevealedFriend.INSTANCE,
+        List.of(first, second, third, fourth), List.of(p(0, "D7"), p(1, "C8")));
+    var facts = new PlayFacts(view);
+
+    assertTrue(FriendSupportIntent.preserveJoker(view, facts));
+    assertTrue(facts.winningActions().stream().anyMatch(a -> a.card() instanceof Joker));
+    assertNotEquals(Joker.INSTANCE, policy.choose(view).card());
+  }
+
+  @Test
+  void preservesJokerWhenNoTrumpDeclarerContinuesDisclosedPrimary() {
+    var first = row(1, Trump.NO_TRUMP, p(0, "CA"), p(1, "C10"), p(2, "CJ"), p(3, "C7"),
+        p(4, "C2"));
+    var second = row(2, Trump.NO_TRUMP, p(0, "H7"), p(1, "HK"), p(2, "HA"), p(3, "H4"),
+        p(4, "H9"));
+    var third = row(3, Trump.NO_TRUMP, p(2, "H8"), p(3, "HJ"), p(4, "D7"), p(0, "SA"),
+        p(1, "H2"));
+    var original = view(2, 0, Trump.NO_TRUMP, 20, "S5 S6 D2 S10 D4 JK H6", "",
+        new CardFriend(Joker.INSTANCE), UnrevealedFriend.INSTANCE,
+        List.of(first, second, third), List.of(p(0, "C3"), p(1, "SJ")));
+    var context = new Context(original.context().playOrder(), original.context().declarer(),
+        original.context().friendStatus(), original.context().history(),
+        List.of(new Bid(15, Trump.CLUB), original.contract()));
+    View view = ObservationFactory.create(original.self(), original.privateInfo(),
+        original.contract(), original.friendSelection(), context, original.trick());
+    var facts = new PlayFacts(view);
+
+    assertTrue(FriendSupportIntent.preserveJoker(view, facts));
+    assertTrue(FriendSupportIntent.requestedSpecial(view, facts).isPresent());
+    assertNotEquals(Joker.INSTANCE, policy.choose(view).card());
+  }
 
   @Test
   void disclosedNoTrumpPrimaryStillUsesRequestedMightyBeforeAce() {
@@ -228,13 +346,14 @@ class PlayFeedbackRegressionTest {
   void callsMightyWithWaterWhenEightCardPrimaryNeedsNoEarlyHelp(String water) {
     View view = view(0, 0, Trump.NO_TRUMP, 17, "CA CK CQ C5 C6 C7 C8 C9 JK " + water, "C2 C3 C4",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(), List.of());
-    assertEquals(card(water), policy.choose(view).card());
+    // 주력 A부터 확인하는 수순도 허용하되, 낮은 주력으로 마이티를 낭비하지 않습니다.
+    assertTrue(Set.of(card(water), card("CA")).contains(policy.choose(view).card()));
   }
 
   @Test
   void ownJokerAndGunStillAllowMightyToHandleSideWater() {
     View view = view(0, 0, Trump.NO_TRUMP, 17, "CA CK CQ C3 C5 C6 C7 C8 JK D2", "D3 H3 H4",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(), List.of());
-    assertEquals(card("D2"), policy.choose(view).card());
+    assertTrue(Set.of(card("D2"), card("CA")).contains(policy.choose(view).card()));
   }
 }

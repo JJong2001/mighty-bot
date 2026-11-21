@@ -2,6 +2,8 @@ package mighty.ai.planning.distribution;
 
 import java.util.*;
 import mighty.game.Seat;
+import mighty.ai.planning.NoTrumpOpeningPlan;
+import mighty.ai.planning.NoTrumpControlPlan;
 import mighty.game.rule.Rules;
 import mighty.model.*;
 
@@ -14,7 +16,8 @@ final class ControlRoute {
   private ControlRoute() {
   }
 
-  static int pointsLost(ConditionalDeal deal, Card called) {
+  static int pointsLost(ConditionalDeal deal, Card called, NoTrumpOpeningPlan plan,
+      NoTrumpControlPlan control) {
     var own = deal.hands().get(new Seat(0));
     boolean ownMighty = own.contains(Rules.mighty(Trump.NO_TRUMP));
     boolean ownJoker = own.contains(Joker.INSTANCE);
@@ -36,18 +39,26 @@ final class ControlRoute {
     int freeMighty = ownMighty && jokerBreaks == 0 && !soloGun ? 1 : 0;
     int freeJoker = ownJoker ? 1 : 0;
     var holdings = new DistributionHoldings(deal);
+    boolean runFirst = plan.purpose() == NoTrumpOpeningPlan.Purpose.RUN_PRIMARY;
+    var mainRanks = holdings.ranks(control.primary());
+    boolean primaryNeedsSweep = remainingThreat(mainRanks, control.holding().topRun(),
+        Math.max(0, mainRanks.get(0).size() - control.holding().topRun())) > 0;
     int[][][] losses = new int[Suit.values().length][3][2];
     for (var suit : Suit.values()) {
       for (int sweeps = 0; sweeps <= freeMighty + freeJoker; sweeps++) {
         for (int support = 0; support <= (friendMighty || friendJoker ? 1 : 0); support++) {
           losses[suit.ordinal()][sweeps][support] = suitLosses(deal, suit, holdings.ranks(suit),
               sweeps, support == 1, gun && friendMighty && support == 1,
-              soloGun && suit == Rules.gun(Trump.NO_TRUMP).suit());
+              soloGun && suit == Rules.gun(Trump.NO_TRUMP).suit(),
+              runFirst && suit == control.primary());
         }
       }
     }
     int best = 20;
     for (Suit request : Suit.values()) {
+      if (runFirst && request == control.primary()) {
+        continue;
+      }
       if (own.stream().noneMatch(c -> c instanceof StandardCard s && s.suit() == request
           && !c.equals(Rules.mighty(Trump.NO_TRUMP)))) {
         continue;
@@ -61,6 +72,11 @@ final class ControlRoute {
         }
         for (int jo = -1; jo < 4; jo++) {
           if (freeJoker == 0 && jo != -1) {
+            continue;
+          }
+          if (runFirst && freeJoker > 0
+              && (primaryNeedsSweep ? jo != control.primary().ordinal()
+              : jo == control.primary().ordinal())) {
             continue;
           }
           int lost = 3 * jokerBreaks;
@@ -116,14 +132,14 @@ final class ControlRoute {
   }
 
   private static int suitLosses(ConditionalDeal deal, Suit suit, List<List<Integer>> ranks,
-      int ownSweeps, boolean requested, boolean gun, boolean soloGun) {
+      int ownSweeps, boolean requested, boolean gun, boolean soloGun, boolean runFirst) {
     List<Integer> own = ranks.get(0);
     if (own.isEmpty()) {
       return 0;
     }
     // 총 전에 가능한 자기 탑카를 먼저 써도 되고, 지원부터 받아도 되는 두 순서를 비교합니다.
     int best = 20;
-    for (boolean topsFirst : List.of(false, true)) {
+    for (boolean topsFirst : runFirst ? List.of(true) : List.of(false, true)) {
       List<List<Integer>> state = ranks.stream().map(ArrayList::new).map(v -> (List<Integer>) v)
           .toList();
       if (topsFirst) {
@@ -137,6 +153,9 @@ final class ControlRoute {
       }
       if (requested && !state.get(0).isEmpty()) {
         state.get(0).remove(0);
+        if (!hasReturnAfterSupport(deal, state, suit)) {
+          continue;
+        }
         forcedRound(state, deal.friendIndex(), true, gun, deal);
       }
       int losses = soloGun ? soloCall(state, deal, suit) : 0;
@@ -146,6 +165,36 @@ final class ControlRoute {
       best = Math.min(best, losses);
     }
     return best;
+  }
+
+  /**
+   * 프렌드가 특수카드로 이긴 뒤에도 실제 반환 카드와 주공의 회수 자원이 필요합니다.
+   */
+  private static boolean hasReturnAfterSupport(ConditionalDeal deal, List<List<Integer>> state,
+      Suit requested) {
+    var own = deal.hands().get(new Seat(0));
+    if (own.contains(Rules.mighty(Trump.NO_TRUMP)) || own.contains(Joker.INSTANCE)) {
+      return true;
+    }
+    if (deal.friendIndex() < 0) {
+      return false;
+    }
+    if (!state.get(deal.friendIndex()).isEmpty() && !state.get(0).isEmpty()
+        && top(state.get(0)) > enemyTop(state, deal.friendIndex())) {
+      return true;
+    }
+    var holdings = new DistributionHoldings(deal);
+    for (Suit suit : Suit.values()) {
+      if (suit == requested) {
+        continue;
+      }
+      var ranks = holdings.ranks(suit);
+      if (!ranks.get(deal.friendIndex()).isEmpty() && !ranks.get(0).isEmpty()
+          && top(ranks.get(0)) > enemyTop(ranks, deal.friendIndex())) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

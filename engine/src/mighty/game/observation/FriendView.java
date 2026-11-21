@@ -6,20 +6,28 @@ import java.util.List;
 import java.util.Objects;
 import mighty.game.Seat;
 import mighty.game.bidding.Bid;
+import mighty.game.bidding.PublicBid;
 import mighty.model.Card;
 
 /**
  * 프렌드를 지정할 주공의 손패와 자기 버린 카드만 제공합니다.
  */
 public record FriendView(
-    Seat self, Bid contract, List<Card> hand, List<Card> discardedCards, List<Bid> contractHistory
+    Seat self, Bid contract, List<Card> hand, List<Card> discardedCards, List<Bid> contractHistory,
+    List<PublicBid> auction
 ) {
 
   public FriendView(Seat self, Bid contract, List<Card> hand, List<Card> discardedCards) {
     this(self, contract, hand, discardedCards, List.of(contract));
   }
 
+  public FriendView(Seat self, Bid contract, List<Card> hand, List<Card> discardedCards,
+      List<Bid> contractHistory) {
+    this(self, contract, hand, discardedCards, contractHistory, List.of());
+  }
+
   public FriendView {
+    auction = List.copyOf(auction);
     Objects.requireNonNull(self, "주공 자리가 필요합니다.");
     Objects.requireNonNull(contract, "공약이 필요합니다.");
     hand = List.copyOf(hand);
