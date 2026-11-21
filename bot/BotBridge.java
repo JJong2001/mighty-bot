@@ -172,6 +172,21 @@ public final class BotBridge {
           out.put("type", a instanceof DealMiss ? "dealMiss" : "pass");
         }
       }
+      case "before" -> {
+        if (hand.size() != 10 || new HashSet<>(hand).size() != 10) {
+          throw new IllegalArgumentException("Expected 10 distinct cards before taking the kitty");
+        }
+        Bid current = contract(req.get("contract"));
+        List<Bid> declarations = contractHistory(req);
+        Bid award = declarations.get(0);
+        Bid fifteenNoTrump = new Bid(15, Trump.NO_TRUMP);
+        Bid selected = award.equals(fifteenNoTrump) && current.equals(fifteenNoTrump)
+            ? POLICIES.preparation().beforeKittyContract(hand, award, current)
+            : current;
+        out.put("type", "contract");
+        out.put("points", selected.points());
+        out.put("trump", trump(selected.trump()));
+      }
       case "discard" -> {
         List<Bid> declarations = contractHistory(req);
         out.put("type", "discard");

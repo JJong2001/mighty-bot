@@ -9,6 +9,7 @@ import mighty.game.action.*;
 import mighty.game.friend.CardFriend;
 import mighty.game.observation.DeclarerInfo;
 import mighty.game.rule.Rules;
+import mighty.game.trick.PublicTrick;
 import mighty.model.*;
 
 /**
@@ -220,6 +221,57 @@ final class NoTrumpOperations {
             "지정 프렌드가 맡은 문양과 다른 긴 문양의 반환을 마이티로 회수합니다."));
   }
 
+  /** 지정 문양의 반환을 받은 뒤 주력을 연달아 돌리되, 마이티는 후속 회수에 남깁니다. */
+  static Optional<mighty.ai.play.PlayDecision> sweepPrimaryWithMightyReserve(
+      DeclarerPosition position) {
+    var view = position.view();
+    var history = view.context().history();
+    if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() != 15
+        || !view.hand().contains(Rules.mighty(Trump.NO_TRUMP))
+        || !view.hand().contains(Joker.INSTANCE) || history.size() < 2
+        || !(view.friendSelection() instanceof CardFriend friend)
+        || !(friend.card() instanceof StandardCard target)
+        || !NoTrumpPlanner.splitControl(BiddingHand.from(initialCards(position)), target)) {
+      return Optional.empty();
+    }
+    var primary = position.primarySuit();
+    var main = position.inSuit(primary);
+    if (main.isEmpty()) {
+      return Optional.empty();
+    }
+    var facts = position.facts();
+    var outside = facts.cards().outsideCards(primary);
+    var last = history.get(history.size() - 1);
+    if (wonFriendReturn(position, last, target.suit())) {
+      var top = PlaySupport.highest(main);
+      var remaining = main.stream().filter(action -> !action.equals(top)).toList();
+      if (!remaining.isEmpty() && facts.isMasterLead(top)
+          && shouldSweepBeforeJokerCall(position, remaining, outside)) {
+        return Optional.of(new mighty.ai.play.PlayDecision(top,
+            "주력 탑카로 한 번 돌려 남은 상위를 확인하고 마이티는 선 회수에 남깁니다."));
+      }
+    }
+    var previous = history.get(history.size() - 2);
+    if (wonFriendReturn(position, previous, target.suit())
+        && last.leader().equals(view.self()) && last.winner().equals(view.self())
+        && last.cards().get(0).action().card() instanceof StandardCard lead
+        && lead.suit() == primary && !lead.equals(Rules.mighty(Trump.NO_TRUMP))
+        && shouldSweepBeforeJokerCall(position, main, outside)) {
+      return position.legal().stream().filter(action ->
+              action instanceof JokerLead joker && joker.declaredSuit() == primary)
+          .findFirst().map(action -> new mighty.ai.play.PlayDecision(action,
+              "낮은 주력으로 선을 내주기 전에 조커컴을 하고 마이티를 회수에 남깁니다."));
+    }
+    return Optional.empty();
+  }
+
+  private static boolean wonFriendReturn(DeclarerPosition position, PublicTrick trick, Suit suit) {
+    return trick.winner().equals(position.view().self())
+        && position.facts().teams().friendSeat().filter(trick.leader()::equals).isPresent()
+        && trick.cards().get(0).action() instanceof StandardPlay lead
+        && lead.card().suit() == suit;
+  }
+
   /**
    * 두 문양을 나눠 맡긴 뒤 마이티와 일반 탑카로 소모한 결과를 보고 조커의 용도를 고릅니다.
    */
@@ -234,15 +286,38 @@ final class NoTrumpOperations {
     if (main.isEmpty() || main.stream().anyMatch(action -> facts.isSuitTop(action.card()))) {
       return Optional.empty();
     }
-    if (facts.cards().outsideCount(suit) == 1) {
+    var outside = facts.cards().outsideCards(suit);
+    boolean useBeforeCall = outside.size() > 1
+        && shouldSweepBeforeJokerCall(position, main, outside);
+    if (outside.size() == 1 || useBeforeCall) {
       return position.legal().stream().filter(action -> action instanceof JokerLead lead
               && lead.declaredSuit() == suit).findFirst()
-          .map(action -> new mighty.ai.play.PlayDecision(action,
-              "주력에 남은 상위 한 장을 조커로 빼고 나머지 주력을 연결합니다."));
+          .map(action -> new mighty.ai.play.PlayDecision(action, useBeforeCall
+              ? "낮게 열면 주력의 마지막 상위가 남고 총을 맞을 수 있어 먼저 조커컴으로 압박합니다."
+              : "주력에 남은 상위 한 장을 조커로 빼고 나머지 주력을 연결합니다."));
     }
     return Optional.of(
         new mighty.ai.play.PlayDecision(mighty.ai.play.PlaySupport.cheapest(main, view),
             "조커컴 한 번으로 주력이 정리되지 않을 수 있어 낮게 돌리고 조커를 회수에 남깁니다."));
+  }
+
+  private static boolean shouldSweepBeforeJokerCall(DeclarerPosition position, List<Action> main,
+      List<StandardCard> outside) {
+    var view = position.view();
+    var facts = position.facts();
+    var gun = Rules.gun(Trump.NO_TRUMP);
+    if (view.contract().points() != 15 || !facts.cards().outsideCards().contains(gun)) {
+      return false;
+    }
+    var highest = (StandardCard) PlaySupport.highest(main).card();
+    if (highest.points() == 0 || outside.stream()
+        .filter(card -> card.rank().value() > highest.rank().value()).count() != 1) {
+      return false;
+    }
+    // 낮은 카드가 외부에 더 있어도 마지막 점수 저지 카드를 빼면 선을 유지할 수 있습니다.
+    return view.context().playOrder().seats().stream()
+        .filter(seat -> !seat.equals(view.self()) && !facts.teams().isAlly(seat))
+        .anyMatch(seat -> !facts.cards().isVoid(seat, gun.suit()));
   }
 
   static boolean splitPlanStillHasJoker(DeclarerPosition position) {

@@ -12,8 +12,45 @@ import mighty.game.observation.BiddingView;
 import mighty.model.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class RuleBiddingPolicyTest {
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "SK S3 HJ H10 H9 CA CK CJ C2 JK",
+      "SA SK S5 S3 D10 HA HK H3 H2 CK"
+  })
+  @DisplayName("주력과 별도 회수 문양이 있는 두 운영 패는 닷노로 열고 닷기루에도 닷노를 부른다")
+  void opensAndCompetesOnlyToFifteenNoTrumpWithDevelopableSuits(String cards) {
+    var owned = mighty.data.CardParser.parseList(cards);
+    var policy = new RuleBiddingPolicy();
+    var opening = state();
+    var contested = opening.submit(
+        new PublicBid(new Seat(0), new BidOffer(new Bid(15, Trump.CLUB))));
+    var expected = new BidOffer(new Bid(15, Trump.NO_TRUMP));
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(0), owned, 40, opening)));
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(1), owned, 40, contested)));
+    var hand = BiddingHand.from(owned);
+    var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
+        List.of());
+    assertEquals(15, assessment.ceilingPoints());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {
+      "SQ S3 HJ H10 H9 CA CK CJ C2 JK",
+      "SK S3 HJ H10 H9 CA CK C10 C2 JK",
+      "SA SQ S5 S3 D10 HA HK H3 H2 CK"
+  })
+  @DisplayName("별도 회수 탑이 없거나 조커 한 번으로 주력 점수 카드가 살아나지 않으면 이 경로로 입찰하지 않는다")
+  void requiresBothDevelopmentAndReentry(String cards) {
+    var hand = BiddingHand.from(mighty.data.CardParser.parseList(cards));
+    var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
+        List.of());
+    assertFalse(assessment.canCompete());
+  }
 
   @Test
   @DisplayName("마이티 문양의 K 초구로 여섯 장 K 기루의 엿 경쟁에 진입한다")
@@ -121,6 +158,42 @@ class RuleBiddingPolicyTest {
 
     assertEquals(new BidOffer(new Bid(15, Trump.DIAMOND)),
         policy.choose(new BiddingView(new Seat(0), owned, 40, state())));
+  }
+
+  @Test
+  @DisplayName("첫 표본이 애매하면 같은 바닥부터 누적해 기루 후보를 다시 비교한다")
+  void comparesMoreDealsForUncertainBids() {
+    var hand = BiddingHand.from(mighty.data.CardParser.parseList("SA S10 S9 S6 D3 H2 CJ C8 C4 C2"));
+    var evaluator = new BidExpectedScoreEvaluator();
+    var clubs = new Bid(15, Trump.CLUB);
+    var spades = new Bid(15, Trump.SPADE);
+    var firstClubs = evaluator.initialBiddingSamples(hand, clubs);
+    var firstSpades = evaluator.initialBiddingSamples(hand, spades);
+
+    assertTrue(firstSpades.mean() > firstClubs.mean());
+    assertTrue(firstSpades.differenceIsUncertain(firstClubs));
+
+    var expandedClubs = evaluator.expandedBiddingSamples(hand, clubs);
+    var expandedSpades = evaluator.expandedBiddingSamples(hand, spades);
+    assertEquals(1000, expandedClubs.kittySettlements().size() * expandedClubs.dealsPerKitty());
+    assertEquals(1000, expandedSpades.kittySettlements().size() * expandedSpades.dealsPerKitty());
+    assertEquals(firstClubs.kittySettlements(), expandedClubs.kittySettlements().subList(0, 10));
+    assertEquals(firstSpades.kittySettlements(), expandedSpades.kittySettlements().subList(0, 10));
+    assertTrue(expandedClubs.mean() > expandedSpades.mean());
+    assertEquals(firstClubs, evaluator.initialBiddingSamples(hand, clubs));
+    assertEquals(firstSpades, evaluator.initialBiddingSamples(hand, spades));
+  }
+
+  @Test
+  @DisplayName("바닥별 정산점의 차이가 일정하면 첫 표본으로 비교를 마친다")
+  void confidentlySeparatesConsistentPairedScores() {
+    var leader = new BidExpectedScoreEvaluator.ScoreSamples(
+        List.of(25, 40, -30, 10, 5, 0, 30, 20, -10, 0), 10);
+    var other = new BidExpectedScoreEvaluator.ScoreSamples(
+        leader.kittySettlements().stream().map(total -> total - 10).toList(), 10);
+
+    assertFalse(leader.differenceIsUncertain(other));
+    assertTrue(leader.differenceIsUncertain(leader));
   }
 
   @Test

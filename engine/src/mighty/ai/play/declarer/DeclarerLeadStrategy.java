@@ -89,6 +89,10 @@ final class DeclarerLeadStrategy {
     if (earlyLoss.isPresent()) {
       return earlyLoss.get();
     }
+    var sweepWithReserve = NoTrumpOperations.sweepPrimaryWithMightyReserve(position);
+    if (sweepWithReserve.isPresent()) {
+      return sweepWithReserve.get();
+    }
     var mightyFirst = SpecialCardPlan.leadMighty(position.legal(), view, position.facts());
     if (mightyFirst.isPresent()) {
       return decision(mightyFirst.get(), "마이티를 먼저 사용해 문양 공격에 소모되지 않게 하고 조커의 문양 선택권을 남깁니다.");

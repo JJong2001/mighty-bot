@@ -28,7 +28,7 @@ final class FriendFollowStrategy {
     if (waiting.isPresent()) {
       return waiting.get();
     }
-    var requested = FriendSupportIntent.requestedSpecial(view, facts);
+    var requested = FriendSupportIntent.requestedSpecial(view, facts).filter(legal::contains);
     if (requested.isPresent()) {
       return new PlayDecision(requested.get(),
           "주공이 요청한 특수카드로 응답하고 일반 카드는 반환과 후속 승리에 남깁니다.");

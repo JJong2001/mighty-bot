@@ -12,6 +12,8 @@ import mighty.model.*;
  */
 public final class PreparationPlanner {
 
+  private static final Bid FIFTEEN_NO_TRUMP = new Bid(15, Trump.NO_TRUMP);
+
   private final RuleDiscardPolicy discard = new RuleDiscardPolicy();
   private final RuleFriendPolicy friend = new RuleFriendPolicy();
   private final BiddingHandEvaluator bids = new BiddingHandEvaluator();
@@ -22,9 +24,13 @@ public final class PreparationPlanner {
    */
   public Bid beforeKittyContract(List<Card> hand, Bid awarded, Bid current) {
     var cards = BiddingHand.from(hand);
+    var assessments = bids.assess(cards);
+    if (FIFTEEN_NO_TRUMP.equals(awarded) && FIFTEEN_NO_TRUMP.equals(current)) {
+      return beforeKittyAfterFifteenNoTrump(assessments, awarded);
+    }
     Bid best = current;
     double bestScore = expectedScores.expectedDeclarerScore(cards, current);
-    for (var assessment : bids.assess(cards)) {
+    for (var assessment : assessments) {
       if (!assessment.canCompete()) {
         continue;
       }
@@ -59,6 +65,9 @@ public final class PreparationPlanner {
   public PreparationPlan choose(DiscardView view, Bid awarded, List<Bid> history) {
     var context = new ContractContext(view.self(), awarded, view.contract(), history,
         GamePhase.DISCARD);
+    if (isFifteenNoTrump(context)) {
+      return compareAfterFifteenNoTrump(context, view.hand(), Optional.empty());
+    }
     var initialBuried = discard.choose(view);
     var initial = evaluate(retained(view.hand(), initialBuried), initialBuried);
     PreparationPlan best = plan(context.current(), initialBuried, friend.choose(
@@ -95,6 +104,16 @@ public final class PreparationPlanner {
   public Bid finalContract(FriendView view, Bid awarded, List<Bid> history) {
     var context = new ContractContext(view.self(), awarded, view.contract(), history,
         GamePhase.FRIEND);
+    if (isFifteenNoTrump(context)) {
+      List<Card> seen = new ArrayList<>(view.hand());
+      seen.addAll(view.discardedCards());
+      return compareAfterFifteenNoTrump(context, seen, Optional.of(view.discardedCards()))
+          .contract();
+    }
+    if (FIFTEEN_NO_TRUMP.equals(awarded) && context.current().points() == 17
+        && context.current().trump() != Trump.NO_TRUMP) {
+      return context.current();
+    }
     var hand = evaluate(view.hand(), view.discardedCards());
     Bid best = view.contract();
     double bestValue = value(hand, hand.assessment(best.trump()), best, best);
@@ -106,6 +125,91 @@ public final class PreparationPlanner {
       }
     }
     return best;
+  }
+
+  private static Bid beforeKittyAfterFifteenNoTrump(List<BidAssessment> assessments, Bid awarded) {
+    if (assessments.stream().anyMatch(assessment -> assessment.trump() == Trump.NO_TRUMP
+        && supports(assessment, FIFTEEN_NO_TRUMP))) {
+      return FIFTEEN_NO_TRUMP;
+    }
+    var suited = assessments.stream()
+        .filter(assessment -> assessment.trump() != Trump.NO_TRUMP)
+        .filter(assessment -> assessment.canCompete() && assessment.ceilingPoints() >= 16)
+        .map(assessment -> new Bid(16, assessment.trump()))
+        .filter(bid -> ContractChangeRules.canChange(awarded, FIFTEEN_NO_TRUMP, bid,
+            GamePhase.BEFORE_KITTY))
+        .toList();
+    // 두 문양 이상이 가능해도 실제 바닥을 보기 전 주력으로 확정하지 않습니다.
+    return suited.size() == 1 ? suited.get(0) : FIFTEEN_NO_TRUMP;
+  }
+
+  private static boolean supports(BidAssessment assessment, Bid bid) {
+    return assessment.trump() == bid.trump() && assessment.canCompete()
+        && assessment.ceilingPoints() >= bid.points();
+  }
+
+  private static boolean isFifteenNoTrump(ContractContext context) {
+    return FIFTEEN_NO_TRUMP.equals(context.awarded()) && FIFTEEN_NO_TRUMP.equals(context.current());
+  }
+
+  private PreparationPlan compareAfterFifteenNoTrump(ContractContext context, List<Card> seen,
+      Optional<List<Card>> fixedDiscards) {
+    var noTrumpHands = handsFor(context, seen, fixedDiscards, FIFTEEN_NO_TRUMP);
+    var full = new Bid(Bid.MAX_POINTS, Trump.NO_TRUMP);
+    for (var hand : noTrumpHands) {
+      var assessment = hand.assessment(Trump.NO_TRUMP);
+      // 실제 바닥으로 풀노 운영이 완성된 경우의 기존 준비 경로는 별도로 유지합니다.
+      if (supports(assessment, full) && assessment.openingPoints() == Bid.MAX_POINTS
+          && ContractChangeRules.canChange(context.awarded(), context.current(), full,
+              context.phase())) {
+        return prepare(context, hand, full);
+      }
+    }
+    var noTrump = bestRetained(noTrumpHands, FIFTEEN_NO_TRUMP);
+    PreparationPlan best = prepare(context, noTrump, FIFTEEN_NO_TRUMP);
+    double bestScore = Double.NEGATIVE_INFINITY;
+    for (Trump trump : Trump.values()) {
+      if (trump == Trump.NO_TRUMP) {
+        continue;
+      }
+      var bid = new Bid(17, trump);
+      if (!ContractChangeRules.canChange(context.awarded(), context.current(), bid,
+          context.phase())) {
+        continue;
+      }
+      var suited = handsFor(context, seen, fixedDiscards, bid).get(0);
+      if (!supports(suited.assessment(trump), bid)) {
+        continue;
+      }
+      if (bestScore == Double.NEGATIVE_INFINITY) {
+        bestScore = expectedScores.expectedPreparedScore(context.current(), seen, best);
+      }
+      var candidate = prepare(context, suited, bid);
+      double score = expectedScores.expectedPreparedScore(context.current(), seen, candidate);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    }
+    return best;
+  }
+
+  private List<EvaluatedHand> handsFor(ContractContext context, List<Card> seen,
+      Optional<List<Card>> fixedDiscards, Bid bid) {
+    var discardChoices = fixedDiscards.map(List::of).orElseGet(() -> discard.ranked(
+        new DiscardView(context.self(), bid, seen), bid.trump() == Trump.NO_TRUMP ? 8 : 1));
+    return discardChoices.stream().map(buried -> evaluate(retained(seen, buried), buried)).toList();
+  }
+
+  private EvaluatedHand bestRetained(List<EvaluatedHand> hands, Bid bid) {
+    return hands.stream().max(Comparator.comparingDouble(hand ->
+        value(hand, hand.assessment(bid.trump()), bid, bid))).orElseThrow();
+  }
+
+  private PreparationPlan prepare(ContractContext context, EvaluatedHand hand, Bid bid) {
+    var selection = friend.choose(new FriendView(context.self(), bid, hand.kept(), hand.buried(),
+        context.history()));
+    return plan(bid, hand.buried(), selection);
   }
 
   private Optional<Candidate> candidate(ContractContext context, EvaluatedHand hand,

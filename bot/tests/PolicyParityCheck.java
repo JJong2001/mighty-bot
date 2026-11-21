@@ -44,6 +44,14 @@ public final class PolicyParityCheck {
 
   public static void main(String[] args) {
     verifyNoTrumpConnectionPlan();
+    var before = request("before", "SA SJ S8 S3 DJ D5 D4 D2 H10 C4");
+    before.put("contract", Map.of("points", 15, "trump", "N"));
+    var preKitty = BotBridge.choose(before);
+    require(preKitty.get("type").equals("contract") && preKitty.get("points").equals(16)
+        && preKitty.get("trump").equals("D"));
+    before.put("contract", Map.of("points", 16, "trump", "N"));
+    var sixNoTrump = BotBridge.choose(before);
+    require(sixNoTrump.get("points").equals(16) && sixNoTrump.get("trump").equals("N"));
     String hand = "SK SQ SJ S7 S6 S2 DA CA C2 JK";
     String buried = "H9 H8 H4";
     Bid contract = new Bid(20, Trump.NO_TRUMP);
