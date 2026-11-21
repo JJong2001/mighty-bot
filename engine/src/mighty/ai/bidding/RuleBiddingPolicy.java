@@ -5,6 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import mighty.ai.bidding.BidExpectedScoreEvaluator.ScoreSamples;
+import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.game.bidding.Bid;
 import mighty.game.bidding.BidOffer;
 import mighty.game.bidding.BidPass;
@@ -59,6 +60,31 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     BiddingHand hand = BiddingHand.from(view.hand());
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
+    var route = HighNoTrumpPlan.find(hand);
+    if (route.isPresent() && view.hand().size() == 10 && route.get().competitiveShape(hand)) {
+      var plan = route.get();
+      Bid standing = view.bidding().highestBid()
+          .map(entry -> ((BidOffer) entry.action()).bid()).orElse(null);
+      boolean competing = standing != null && standing.points() >= 16;
+      if (competing && !plan.joker() && hand.hasMighty(standing.trump())
+          && standing.trump() != Trump.NO_TRUMP) {
+        return BidPass.INSTANCE;
+      }
+      if (!competing && plan.hasTwoSources(hand)) {
+        return new BidOffer(new Bid(16, plan.suited()));
+      }
+      int ceiling = plan.competitiveCeiling();
+      boolean signalled = plan.hasTwoSources(hand) && view.bidding().history().stream()
+          .anyMatch(entry -> entry.seat().equals(view.self()) && entry.action() instanceof BidOffer offer
+              && offer.bid().equals(new Bid(16, plan.suited())));
+      for (int points = signalled ? 17 : 16; points <= ceiling; points++) {
+        var offer = new BidOffer(new Bid(points, Trump.NO_TRUMP));
+        if (legal.contains(offer)) {
+          return offer;
+        }
+      }
+      return BidPass.INSTANCE;
+    }
     List<BidAssessment> assessments = evaluator.assess(hand).stream()
         .filter(BidAssessment::canCompete).toList();
     List<Candidate> noTrump = candidates(assessments, legal, Trump.NO_TRUMP);

@@ -20,10 +20,9 @@ class RuleBiddingPolicyTest {
 
   @ParameterizedTest
   @ValueSource(strings = {
-      "SK S3 HJ H10 H9 CA CK CJ C2 JK",
-      "SA SK S5 S3 D10 HA HK H3 H2 CK"
+      "SK S3 HJ H10 H9 CA CK CJ C2 JK"
   })
-  @DisplayName("주력과 별도 회수 문양이 있는 두 운영 패는 닷노로 열고 닷기루에도 닷노를 부른다")
+  @DisplayName("조커와 클로버 주력이 있는 패는 닷노로 열고 닷기루에도 닷노를 부른다")
   void opensAndCompetesOnlyToFifteenNoTrumpWithDevelopableSuits(String cards) {
     var owned = mighty.data.CardParser.parseList(cards);
     var policy = new RuleBiddingPolicy();
@@ -67,6 +66,23 @@ class RuleBiddingPolicyTest {
     assertEquals(15, assessment.ceilingPoints());
     assertEquals(new BidOffer(new Bid(15, selected)),
         new RuleBiddingPolicy().choose(new BiddingView(new Seat(0), owned, 40, state())));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "SA SK S5 S3 D10 HA HK H3 H2 CK, 15, 16, NO_TRUMP",
+      "SA SK S5 S3 D10 HA HK HQ H2 CK, 16, 0, NO_TRUMP",
+      "JK SK S5 S3 D10 HA HK HQ H2 CK, 16, 16, NO_TRUMP",
+      "JK SK S5 S3 D10 HA HK HQ H2 CK, 17, 17, NO_TRUMP",
+      "JK SK S5 S3 D10 HA HK HQ H2 CK, 18, 0, NO_TRUMP",
+      "SA SK S5 S3 D10 HA HK HQ H2 JK, 15, 16, HEART",
+      "SA SK S5 S3 D10 HA HK HQ H2 JK, 17, 17, NO_TRUMP"
+  })
+  void comparesFriendProspectWithTakingContract(String cards, int standing, int points, Trump trump) {
+    var auction = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(standing, Trump.CLUB))));
+    var action = new RuleBiddingPolicy().choose(new BiddingView(new Seat(1),
+        mighty.data.CardParser.parseList(cards), 40, auction));
+    assertEquals(points == 0 ? BidPass.INSTANCE : new BidOffer(new Bid(points, trump)), action);
   }
 
   @Test

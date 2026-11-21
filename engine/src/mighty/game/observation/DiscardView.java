@@ -5,14 +5,22 @@ import java.util.List;
 import java.util.Objects;
 import mighty.game.Seat;
 import mighty.game.bidding.Bid;
+import mighty.game.bidding.PublicBid;
 import mighty.model.Card;
 
 /**
  * 바닥을 받은 주공에게만 전달하는 버리기 관측입니다.
  */
-public record DiscardView(Seat self, Bid contract, List<Card> hand) {
+public record DiscardView(
+    Seat self, Bid contract, List<Card> hand, List<PublicBid> auction
+) {
+
+  public DiscardView(Seat self, Bid contract, List<Card> hand) {
+    this(self, contract, hand, List.of());
+  }
 
   public DiscardView {
+    auction = List.copyOf(auction);
     Objects.requireNonNull(self, "주공 자리가 필요합니다.");
     Objects.requireNonNull(contract, "공약이 필요합니다.");
     hand = List.copyOf(hand);

@@ -1,6 +1,7 @@
 package mighty.ai.bidding;
 
 import java.util.*;
+import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.NoTrumpPlanner;
 import mighty.ai.planning.distribution.NoTrumpDistributionEvaluator;
 import mighty.model.*;
@@ -15,6 +16,14 @@ final class NoTrumpBidEvaluator {
 
   static BidAssessment assess(CandidateResources resources, Collection<? extends Card> excluded) {
     var hand = resources.hand();
+    if (excluded.isEmpty() && Arrays.stream(Suit.values()).mapToInt(s -> hand.holding(s).size())
+        .sum() + (hand.hasJoker() ? 1 : 0) == 10) {
+      var high = HighNoTrumpPlan.find(hand).filter(p -> p.competitiveShape(hand));
+      if (high.isPresent()) {
+        return new BidAssessment(Trump.NO_TRUMP, true, 16, high.get().competitiveCeiling(), 185,
+            List.of("주력의 상위 연결과 별도 초구로 엿노에 진입해 공개 입찰에 따라 경쟁합니다."));
+      }
+    }
     var plan = NoTrumpPlanner.analyze(hand, excluded);
     boolean ownMighty = hand.hasMighty(Trump.NO_TRUMP);
     boolean ownJoker = hand.hasJoker();

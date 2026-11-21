@@ -3,8 +3,9 @@ package mighty.game.observation;
 import java.util.List;
 import java.util.Objects;
 import mighty.game.PlayOrder;
-import mighty.game.bidding.Bid;
 import mighty.game.Seat;
+import mighty.game.bidding.Bid;
+import mighty.game.bidding.PublicBid;
 import mighty.game.friend.FriendStatus;
 import mighty.game.friend.RevealedFriend;
 import mighty.game.trick.PublicTrick;
@@ -17,10 +18,17 @@ public record Context(
     Seat declarer,
     FriendStatus friendStatus,
     List<PublicTrick> history,
-    List<Bid> contractHistory
+    List<Bid> contractHistory,
+    List<PublicBid> auction
 ) {
 
+  public Context(PlayOrder playOrder, Seat declarer, FriendStatus friendStatus,
+      List<PublicTrick> history, List<Bid> contractHistory) {
+    this(playOrder, declarer, friendStatus, history, contractHistory, List.of());
+  }
+
   public Context {
+    auction = List.copyOf(auction);
     Objects.requireNonNull(playOrder, "플레이 순서가 필요합니다.");
     Objects.requireNonNull(declarer, "주공 자리가 필요합니다.");
     Objects.requireNonNull(friendStatus, "프렌드 공개 상태가 필요합니다.");

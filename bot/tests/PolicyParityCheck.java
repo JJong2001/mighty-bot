@@ -44,6 +44,16 @@ public final class PolicyParityCheck {
 
   public static void main(String[] args) {
     verifyNoTrumpConnectionPlan();
+    var contested = request("before", "JK SK S5 S3 D10 HA HK HQ H2 CK");
+    contested.put("contract", Map.of("points", 17, "trump", "N"));
+    var suited = BotBridge.choose(contested);
+    require(suited.get("points").equals(18) && suited.get("trump").equals("H"));
+    var support = request("friend", "SA SK S5 S3 HA HK HQ H2 JK C2");
+    support.put("contract", Map.of("points", 17, "trump", "N"));
+    support.put("discarded", List.of("D10", "D2", "D3"));
+    require(BotBridge.choose(support).get("friend").equals("SQ"));
+    support.put("auction", List.of(Map.of("color", "Blue", "type", "bid", "points", 16, "trump", "C")));
+    require(BotBridge.choose(support).get("friend").equals("CA"));
     var before = request("before", "SA SJ S8 S3 DJ D5 D4 D2 H10 C4");
     before.put("contract", Map.of("points", 15, "trump", "N"));
     var preKitty = BotBridge.choose(before);

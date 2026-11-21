@@ -29,6 +29,10 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> jokers = position.legal().stream().filter(action -> action instanceof JokerLead)
         .toList();
+    var high = HighNoTrumpPlay.lead(position);
+    if (high.isPresent()) {
+      return high.get();
+    }
     var runningSuit = NoTrumpOperations.runPrimaryBeforeMightyFriend(position);
     if (runningSuit.isPresent()) {
       return runningSuit.get();

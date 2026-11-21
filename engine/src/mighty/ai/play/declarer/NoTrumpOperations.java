@@ -31,7 +31,7 @@ final class NoTrumpOperations {
         view.contract().points(), view.context().contractHistory());
   }
 
-  private static List<Card> initialCards(DeclarerPosition position) {
+  static List<Card> initialCards(DeclarerPosition position) {
     List<Card> initial = new ArrayList<>(position.view().hand());
     position.facts().cards().publicHistory().completedPlays().stream()
         .filter(play -> play.seat().equals(position.view().self()))

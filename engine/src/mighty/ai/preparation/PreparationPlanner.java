@@ -2,6 +2,7 @@ package mighty.ai.preparation;
 
 import java.util.*;
 import mighty.ai.bidding.*;
+import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.game.*;
 import mighty.game.bidding.*;
 import mighty.game.observation.*;
@@ -24,6 +25,10 @@ public final class PreparationPlanner {
    */
   public Bid beforeKittyContract(List<Card> hand, Bid awarded, Bid current) {
     var cards = BiddingHand.from(hand);
+    var high = highBeforeKitty(cards, awarded, current);
+    if (high.isPresent()) {
+      return high.get();
+    }
     var assessments = bids.assess(cards);
     if (FIFTEEN_NO_TRUMP.equals(awarded) && FIFTEEN_NO_TRUMP.equals(current)) {
       return beforeKittyAfterFifteenNoTrump(assessments, awarded);
@@ -67,6 +72,10 @@ public final class PreparationPlanner {
         GamePhase.DISCARD);
     if (isFifteenNoTrump(context)) {
       return compareAfterFifteenNoTrump(context, view.hand(), Optional.empty());
+    }
+    var high = highPreparation(view, awarded, history);
+    if (high.isPresent()) {
+      return high.get();
     }
     var initialBuried = discard.choose(view);
     var initial = evaluate(retained(view.hand(), initialBuried), initialBuried);
@@ -114,6 +123,11 @@ public final class PreparationPlanner {
         && context.current().trump() != Trump.NO_TRUMP) {
       return context.current();
     }
+    var kept = BiddingHand.from(view.hand());
+    var route = highRoute(kept, awarded);
+    if (route.isPresent()) {
+      return retainedContract(route.get(), kept, awarded, view.contract(), GamePhase.FRIEND);
+    }
     var hand = evaluate(view.hand(), view.discardedCards());
     Bid best = view.contract();
     double bestValue = value(hand, hand.assessment(best.trump()), best, best);
@@ -125,6 +139,78 @@ public final class PreparationPlanner {
       }
     }
     return best;
+  }
+
+  public static Optional<Bid> highBeforeKitty(BiddingHand hand, Bid awarded, Bid current) {
+    return highRoute(hand, awarded)
+        .filter(plan -> plan.competitiveShape(hand) || plan.hasTwoSources(hand))
+        .map(plan -> current.equals(new Bid(17, Trump.NO_TRUMP)) && !plan.mighty() && plan.joker()
+            ? new Bid(18, plan.suited()) : current);
+  }
+
+  private static Optional<HighNoTrumpPlan> highRoute(BiddingHand hand,
+      Bid awarded) {
+    if (awarded.points() != 16 && awarded.points() != 17) {
+      return Optional.empty();
+    }
+    return HighNoTrumpPlan.find(hand)
+        .filter(plan -> awarded.trump() == Trump.NO_TRUMP
+            || (awarded.points() == 16 && awarded.trump() == plan.suited()
+            && plan.hasTwoSources(hand)));
+  }
+
+  private static Bid retainedContract(HighNoTrumpPlan plan, BiddingHand hand,
+      Bid awarded, Bid current, GamePhase phase) {
+    if (current.trump() != Trump.NO_TRUMP && current.points() > 16 && current.points() < 20) {
+      return current;
+    }
+    int points = plan.canRun(hand) ? 20 : current.trump() == Trump.NO_TRUMP
+        ? current.points() : 17;
+    var proposed = new Bid(points, Trump.NO_TRUMP);
+    return ContractChangeRules.canChange(awarded, current, proposed, phase) ? proposed : current;
+  }
+
+  private Optional<PreparationPlan> highPreparation(DiscardView view, Bid awarded,
+      List<Bid> history) {
+    var seen = BiddingHand.from(view.hand());
+    var route = highRoute(seen, awarded);
+    if (route.isEmpty()) {
+      return Optional.empty();
+    }
+    var line = route.get();
+    List<Card> buried;
+    if (view.contract().trump() == Trump.NO_TRUMP || view.contract().points() == 16) {
+      // 두 주력 문양을 살리고 같은 옆 문양을 비웁니다. 점수패는 묻어 회수합니다.
+      var outside = view.hand().stream().filter(StandardCard.class::isInstance)
+          .map(StandardCard.class::cast)
+          .filter(c -> c.suit() != Suit.SPADE && c.suit() != line.primary())
+          .sorted(Comparator.<StandardCard>comparingInt(c -> seen.holding(c.suit()).size())
+              .reversed().thenComparing(Comparator.comparingInt(StandardCard::points).reversed())
+              .thenComparingInt(c -> c.rank().value())).limit(3).toList();
+      if (line.hasTwoSources(seen) && outside.size() == 3) {
+        buried = List.copyOf(outside);
+      } else {
+        var preserved = discard.ranked(view, 286).stream().filter(choice ->
+            highRoute(BiddingHand.from(retained(view.hand(), choice)), awarded).isPresent())
+            .findFirst();
+        if (preserved.isEmpty()) {
+          return Optional.empty();
+        }
+        buried = preserved.get();
+      }
+    } else {
+      buried = discard.choose(view);
+    }
+    var kept = retained(view.hand(), buried);
+    var hand = BiddingHand.from(kept);
+    var retained = highRoute(hand, awarded);
+    if (retained.isEmpty()) {
+      return Optional.empty();
+    }
+    var bid = retainedContract(retained.get(), hand, awarded, view.contract(), GamePhase.DISCARD);
+    var called = friend.choose(new FriendView(view.self(), bid, kept, buried, history,
+        view.auction()));
+    return Optional.of(plan(bid, buried, called));
   }
 
   private static Bid beforeKittyAfterFifteenNoTrump(List<BidAssessment> assessments, Bid awarded) {
@@ -265,11 +351,41 @@ public final class PreparationPlanner {
     return new ContractResolution(selected, declarationSequence(view, awarded, history, selected));
   }
 
+  /** 실제 판과 가상 대국 모두 프렌드가 읽을 수 있는 같은 순서로 공약을 공개합니다. */
+  public static List<Bid> discardDeclarations(DiscardView view, Bid awarded, List<Bid> history,
+      PreparationPlan plan) {
+    if (plan.contract().equals(new Bid(20, Trump.NO_TRUMP))
+        && (awarded.points() == 16 || awarded.points() == 17)) {
+      var kept = retained(view.hand(), plan.discarded());
+      var hand = BiddingHand.from(kept);
+      if (highRoute(hand, awarded).filter(route -> route.canRun(hand)).isPresent()) {
+        var exposed = new FriendView(view.self(), view.contract(), kept, plan.discarded(), history,
+            view.auction());
+        return declarationSequence(exposed, awarded, history, plan.contract());
+      }
+    }
+    return plan.contract().equals(view.contract()) ? List.of() : List.of(plan.contract());
+  }
+
   private static List<Bid> declarationSequence(FriendView view, Bid awarded, List<Bid> history,
       Bid selected) {
     if (selected.points() == Bid.MAX_POINTS
         && selected.trump() == Trump.NO_TRUMP) {
       BiddingHand hand = BiddingHand.from(view.hand());
+      var route = highRoute(hand, awarded).filter(plan -> plan.canRun(hand));
+      if (route.isPresent()) {
+        var signals = new ArrayList<Bid>();
+        if (hand.holding(Suit.SPADE).size() >= 5) {
+          signals.add(new Bid(20, Trump.SPADE));
+        }
+        signals.add(new Bid(20, route.get().suited()));
+        signals.add(selected);
+        if (history.size() >= signals.size() && history.subList(history.size() - signals.size(),
+            history.size()).equals(signals)) {
+          return List.of();
+        }
+        return List.copyOf(signals);
+      }
       var selection = new RuleFriendPolicy().choose(new FriendView(
           view.self(), selected, view.hand(), view.discardedCards(), history));
       var opening = mighty.ai.planning.NoTrumpOpeningPlanner.plan(hand, view.discardedCards(),

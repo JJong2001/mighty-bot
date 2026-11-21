@@ -41,9 +41,10 @@ public final class RoundPreparation {
   ) throws E {
     var actor = round.currentSeat().orElseThrow();
     var history = round.contractHistory();
-    var plan = planner.choose(round.discardView(actor), history.get(0), history);
-    if (!plan.contract().equals(round.contract())) {
-      revise.apply(plan.contract());
+    var view = round.discardView(actor);
+    var plan = planner.choose(view, history.get(0), history);
+    for (var bid : PreparationPlanner.discardDeclarations(view, history.get(0), history, plan)) {
+      revise.apply(bid);
     }
     submit.apply(plan.discarded());
   }
