@@ -32,6 +32,17 @@ public final class RulePlayPolicy implements PlayPolicy {
     Objects.requireNonNull(view);
     PlayFacts facts = new PlayFacts(view);
     List<Action> legal = policyCandidates(view, facts);
+    var usual = usualDecision(view, facts, legal);
+    return HonorGamble.choose(view, facts, legal, usual, this);
+  }
+
+  // 비교 대국은 각 자리의 관측만 사용하고 평가 중 다시 가상 대국을 열지 않습니다.
+  PlayDecision usualDecision(View view) {
+    var facts = new PlayFacts(view);
+    return usualDecision(view, facts, policyCandidates(view, facts));
+  }
+
+  private PlayDecision usualDecision(View view, PlayFacts facts, List<Action> legal) {
     // 이 두 공통 특례는 기존처럼 역할 판단과 후처리보다 먼저 반환합니다.
     var expiry = JokerExpiry.choose(view, facts, legal);
     if (expiry.isPresent()) {
