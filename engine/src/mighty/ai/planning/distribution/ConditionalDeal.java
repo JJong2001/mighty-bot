@@ -78,6 +78,10 @@ record ConditionalDeal(Map<Seat, List<Card>> hands, List<Card> buried, int frien
     if (!own.contains(lead)) {
       throw new IllegalArgumentException("계획의 초구가 자기 손패에 없습니다.");
     }
+    boolean ownOrdinaryTop = hands.values().stream().flatMap(Collection::stream)
+        .filter(card -> card instanceof mighty.model.StandardCard standard
+            && standard.suit() == lead.suit() && !card.equals(mightyCard))
+        .noneMatch(card -> ((mighty.model.StandardCard) card).rank().value() > lead.rank().value());
     int winner = 0;
     Card winningCard = lead;
     var conditions = new mighty.game.rule.TrickConditions(mighty.model.Trump.NO_TRUMP,
@@ -85,6 +89,9 @@ record ConditionalDeal(Map<Seat, List<Card>> hands, List<Card> buried, int frien
         new mighty.game.TrickNumber(1), false);
     for (int index = 1; index < 5; index++) {
       for (Card card : hands.get(new Seat(index))) {
+        if (index == friendIndex && card.equals(mightyCard) && ownOrdinaryTop) {
+          continue;
+        }
         if (mighty.game.rule.Rules.strength(card, conditions) > mighty.game.rule.Rules.strength(
             winningCard, conditions)) {
           winningCard = card;

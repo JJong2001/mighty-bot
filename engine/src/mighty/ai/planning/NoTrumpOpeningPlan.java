@@ -22,6 +22,8 @@ public record NoTrumpOpeningPlan(
    * A의 선사용과 지원 요청을 서로 다른 운영 목적으로 보존합니다.
    */
   public enum Purpose {
+    FORCE_JOKER("주력 탑카로 초구를 확보한 뒤 총을 쏘고 독립 회수 문양으로 선을 돌려받습니다."),
+    RUN_PRIMARY("주력의 자력 탑카부터 소모하고 마이티 지원은 사이드 손실 처리에 남깁니다."),
     REQUEST_FRIEND("지정 프렌드를 먼저 찾아 회수 카드와 다른 문양의 운영 자원을 남깁니다."),
     OPENING_FRIEND("공통 초구 계획의 반환 문양에서 초구 프렌드를 찾습니다."),
     PROMOTE_PARTNER("풀노의 추가 승리를 열도록 사이드 A로 프렌드의 다음 상위를 승격시킵니다."),

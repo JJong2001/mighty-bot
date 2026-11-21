@@ -28,6 +28,9 @@ final class NoTrumpBidEvaluator {
     boolean ownMighty = hand.hasMighty(Trump.NO_TRUMP);
     boolean ownJoker = hand.hasJoker();
     boolean gun = hand.hasGun(Trump.NO_TRUMP);
+    if (!ownMighty && !ownJoker && !plan.available()) {
+      return unavailable(resources);
+    }
     if (!ownMighty && !ownJoker && !gun) {
       return unavailable(resources);
     }

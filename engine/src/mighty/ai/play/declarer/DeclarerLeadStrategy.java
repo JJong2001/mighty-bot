@@ -29,14 +29,6 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> jokers = position.legal().stream().filter(action -> action instanceof JokerLead)
         .toList();
-    var high = HighNoTrumpPlay.lead(position);
-    if (high.isPresent()) {
-      return high.get();
-    }
-    var runningSuit = NoTrumpOperations.runPrimaryBeforeMightyFriend(position);
-    if (runningSuit.isPresent()) {
-      return runningSuit.get();
-    }
     if (view.trickNumber().isFirst() && view.contract().trump() == Trump.NO_TRUMP) {
       var plan = NoTrumpOperations.openingPlan(position);
       if (plan.opening().isPresent()) {
@@ -46,6 +38,14 @@ final class DeclarerLeadStrategy {
         }
         return decision(action, plan.purpose().explanation());
       }
+    }
+    var continuation = NoTrumpOperations.continueOpeningPlan(position);
+    if (continuation.isPresent()) {
+      return continuation.get();
+    }
+    var high = HighNoTrumpPlay.lead(position);
+    if (high.isPresent()) {
+      return high.get();
     }
     if (view.trickNumber().value() == 1 && view.friendSelection() == SpecialFriend.FIRST_TRICK
         && view.contract().trump() != Trump.NO_TRUMP) {
@@ -135,10 +135,6 @@ final class DeclarerLeadStrategy {
   private static PlayDecision opening(DeclarerPosition position) {
     var view = position.view();
     List<Action> sides = position.sides();
-    var sideSupport = SupportCallPlan.choose(position);
-    if (sideSupport.isPresent()) {
-      return sideSupport.get();
-    }
     if (view.contract().trump() != Trump.NO_TRUMP) {
       var hand = mighty.ai.bidding.BiddingHand.from(view.hand());
       var buried = ((mighty.game.observation.DeclarerInfo) view.privateInfo()).discardedCards();
@@ -212,10 +208,6 @@ final class DeclarerLeadStrategy {
     var delayed = NoTrumpOperations.delaySupport(position);
     if (delayed.isPresent()) {
       return delayed.get();
-    }
-    var sideSupport = SupportCallPlan.choose(position);
-    if (sideSupport.isPresent()) {
-      return sideSupport.get();
     }
     var splitContinuation = NoTrumpOperations.continueSplitWithJoker(position);
     if (splitContinuation.isPresent()) {

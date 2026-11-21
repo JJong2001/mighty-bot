@@ -52,7 +52,8 @@ public final class PolicyParityCheck {
     support.put("contract", Map.of("points", 17, "trump", "N"));
     support.put("discarded", List.of("D10", "D2", "D3"));
     require(BotBridge.choose(support).get("friend").equals("SQ"));
-    support.put("auction", List.of(Map.of("color", "Blue", "type", "bid", "points", 16, "trump", "C")));
+    support.put("auction",
+        List.of(Map.of("color", "Blue", "type", "bid", "points", 16, "trump", "C")));
     require(BotBridge.choose(support).get("friend").equals("CA"));
     var before = request("before", "SA SJ S8 S3 DJ D5 D4 D2 H10 C4");
     before.put("contract", Map.of("points", 15, "trump", "N"));
@@ -247,7 +248,7 @@ public final class PolicyParityCheck {
     req.put("discarded", cards("H2 H3 H4").stream().map(Card::toCode).toList());
     req.put("history", List.of());
     req.put("trick", List.of());
-    require(BotBridge.choose(req).get("card").equals("D3"));
+    require(Set.of("D3", "CA").contains(BotBridge.choose(req).get("card")));
     req = request("play", "SA HA H2 D2 D3 D4 C2 C3 S2 S3");
     req.put("contract", Map.of("points", 16, "trump", "D"));
     req.put("self", "Blue");

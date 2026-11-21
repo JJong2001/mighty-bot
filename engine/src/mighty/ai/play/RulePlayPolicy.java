@@ -52,7 +52,12 @@ public final class RulePlayPolicy implements PlayPolicy {
     if (firstFriend.isPresent()) {
       return firstFriend.get();
     }
-    return finishDecision(chooseRole(view, facts, legal), view, facts, legal);
+    var decision = chooseRole(view, facts, legal);
+    var recovery = ControlRecoveryPlan.choose(view, facts, legal);
+    if (recovery.isPresent() && !recovery.get().action().equals(decision.action())) {
+      decision = recovery.get();
+    }
+    return finishDecision(decision, view, facts, legal);
   }
 
   /**

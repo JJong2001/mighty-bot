@@ -17,6 +17,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 
 class HighNoTrumpTest {
+
   private static final String HAND = "SA SK S5 S3 D10 HA HK HQ H2 JK";
   private static final Bid AWARD = new Bid(17, Trump.NO_TRUMP);
   private static final Seat SELF = new Seat(0);
@@ -25,7 +26,7 @@ class HighNoTrumpTest {
 
   @ParameterizedTest
   @CsvSource({
-      "D2 D3 D4, D10 D2 D3, 17, SQ, HA, ''",
+      "D2 D3 D4, D10 D2 D3, 17, SQ, S3, ''",
       "D2 D3 H4, D10 D2 D3, 20, SQ, S3, HEART",
       "D2 D3 S9, D10 D2 D3, 20, SQ, S3, SPADE HEART",
       "D2 D3 C2, D10 D2 D3, 17, CA, C2, ''"
@@ -68,8 +69,10 @@ class HighNoTrumpTest {
     var hand = CardParser.parseList("JK SK S5 S3 D10 HA HK HQ H2 CK");
     assertEquals(new Bid(18, Trump.HEART), planner.beforeKittyContract(hand, AWARD, AWARD));
     var sixteen = new Bid(16, Trump.HEART);
-    assertEquals(sixteen, planner.beforeKittyContract(CardParser.parseList(HAND), sixteen, sixteen));
-    var after = planner.choose(new DiscardView(SELF, sixteen, CardParser.parseList(HAND + " D2 D3 D4")));
+    assertEquals(sixteen,
+        planner.beforeKittyContract(CardParser.parseList(HAND), sixteen, sixteen));
+    var after = planner.choose(
+        new DiscardView(SELF, sixteen, CardParser.parseList(HAND + " D2 D3 D4")));
     assertEquals(AWARD, after.contract());
   }
 
@@ -80,7 +83,8 @@ class HighNoTrumpTest {
         friend, UnrevealedFriend.INSTANCE, List.of(), List.of());
     var policy = new RulePlayPolicy();
     assertEquals(card("SK"), policy.choose(first).card());
-    var history = List.of(row(1, Trump.NO_TRUMP, p(0,"SK"), p(1,"S2"), p(2,"S6"), p(3,"S7"), p(4,"S8")));
+    var history = List.of(
+        row(1, Trump.NO_TRUMP, p(0, "SK"), p(1, "S2"), p(2, "S6"), p(3, "S7"), p(4, "S8")));
     var next = view(0, 0, Trump.NO_TRUMP, 16, "SA S5 S3 D10 HA HK H3 H2 CK", "D2 D3 D4",
         friend, UnrevealedFriend.INSTANCE, history, List.of());
     assertEquals(card("H2"), policy.choose(next).card());
@@ -89,12 +93,14 @@ class HighNoTrumpTest {
   @ParameterizedTest
   @CsvSource({"H10, H4, HA", "S10, S9, SK"})
   void takesFriendsReturnWithOrdinaryWinner(String returned, String extra, String expected) {
-    var opening = row(1, Trump.NO_TRUMP, p(0,"S3"), p(1,"SQ"), p(2,"S2"), p(3,"S4"), p(4,"S6"));
+    var opening = row(1, Trump.NO_TRUMP, p(0, "S3"), p(1, "SQ"), p(2, "S2"), p(3, "S4"),
+        p(4, "S6"));
     var trick = returned.startsWith("H")
-        ? List.of(p(1,returned), p(2,"H3"), p(3,"H5"), p(4,"H6"))
-        : List.of(p(1,returned), p(2,"S7"), p(3,"S8"), p(4,"D4"));
+        ? List.of(p(1, returned), p(2, "H3"), p(3, "H5"), p(4, "H6"))
+        : List.of(p(1, returned), p(2, "S7"), p(3, "S8"), p(4, "D4"));
     var current = view(0, 0, Trump.NO_TRUMP, 20, "SA SK S5 HA HK HQ H2 JK " + extra,
-        "D10 D2 D3", new CardFriend(card("SQ")), new RevealedFriend(new Seat(1)), List.of(opening), trick);
+        "D10 D2 D3", new CardFriend(card("SQ")), new RevealedFriend(new Seat(1)), List.of(opening),
+        trick);
     assertEquals(card(expected), new RulePlayPolicy().choose(current).card());
   }
 
@@ -109,13 +115,13 @@ class HighNoTrumpTest {
   @CsvSource({"HJ, H2", "H10, JK"})
   void sweepsWithJokerOnlyIfHeartsStillBlocked(String lastHeart, String next) {
     var history = List.of(
-        row(1, Trump.NO_TRUMP, p(0,"HA"), p(1,"H3"), p(2,"H4"), p(3,"H5"), p(4,"H6")),
-        row(2, Trump.NO_TRUMP, p(0,"HK"), p(1,"H7"), p(2,"H8"), p(3,"C2"), p(4,"C3")),
-        row(3, Trump.NO_TRUMP, p(0,"HQ"), p(1,"H9"), p(2,lastHeart), p(3,"C4"), p(4,"C5")));
+        row(1, Trump.NO_TRUMP, p(0, "HA"), p(1, "H3"), p(2, "H4"), p(3, "H5"), p(4, "H6")),
+        row(2, Trump.NO_TRUMP, p(0, "HK"), p(1, "H7"), p(2, "H8"), p(3, "C2"), p(4, "C3")),
+        row(3, Trump.NO_TRUMP, p(0, "HQ"), p(1, "H9"), p(2, lastHeart), p(3, "C4"), p(4, "C5")));
     // H10 또는 HJ도 외부에 남으면 2가 탑이 아니므로, 비교할 나머지 상위는 첫 두 구에 소모합니다.
     if (lastHeart.equals("HJ")) {
       history = List.of(history.get(0),
-          row(2, Trump.NO_TRUMP, p(0,"HK"), p(1,"H7"), p(2,"H8"), p(3,"H10"), p(4,"C3")),
+          row(2, Trump.NO_TRUMP, p(0, "HK"), p(1, "H7"), p(2, "H8"), p(3, "H10"), p(4, "C3")),
           history.get(2));
     }
     var view = view(0, 0, Trump.NO_TRUMP, 17, "SA SK S5 S3 H2 D4 JK", "D10 D2 D3",
@@ -129,17 +135,18 @@ class HighNoTrumpTest {
 
   @Test
   void cashesSideWinnerAndReadsDeclarerDiscard() {
-    var opening = row(1, Trump.NO_TRUMP, p(0,"C2"), p(1,"CA"), p(2,"C3"), p(3,"C4"), p(4,"C5"));
+    var opening = row(1, Trump.NO_TRUMP, p(0, "C2"), p(1, "CA"), p(2, "C3"), p(3, "C4"),
+        p(4, "C5"));
     var friend = new CardFriend(card("CA"));
     var status = new RevealedFriend(new Seat(1));
     var cash = view(1, 0, Trump.NO_TRUMP, 17, "DA S10 S8 H3 H4 C7 C6 D5 D6", "", friend,
         status, List.of(opening), List.of());
     assertEquals(card("DA"), new RulePlayPolicy().choose(withAuction(cash)).card());
-    var beforeDiscard = List.of(p(1,"DA"), p(2,"D4"), p(3,"D5"), p(4,"D6"));
+    var beforeDiscard = List.of(p(1, "DA"), p(2, "D4"), p(3, "D5"), p(4, "D6"));
     var declarer = view(0, 0, Trump.NO_TRUMP, 17, "SA SK S5 S3 HA HK HQ H2 JK", "D10 D2 D3",
         friend, status, List.of(opening), beforeDiscard);
     assertEquals(card("S3"), new RulePlayPolicy().choose(withAuction(declarer)).card());
-    var second = row(2, Trump.NO_TRUMP, p(1,"DA"), p(2,"D4"), p(3,"D7"), p(4,"D8"), p(0,"S3"));
+    var second = row(2, Trump.NO_TRUMP, p(1, "DA"), p(2, "D4"), p(3, "D7"), p(4, "D8"), p(0, "S3"));
     var returning = view(1, 0, Trump.NO_TRUMP, 17, "S10 S8 H3 H4 C7 C6 D5 D6", "",
         friend, status, List.of(opening, second), List.of());
     assertEquals(card("S10"), new RulePlayPolicy().choose(withAuction(returning)).card());
@@ -154,8 +161,9 @@ class HighNoTrumpTest {
     var owned = CardParser.parseList(HAND);
     var kitty = CardParser.parseList("D2 D3 S9");
     var seats = java.util.stream.IntStream.range(0, 5).mapToObj(Seat::new).toList();
-    var order = mighty.game.PlayOrder.from(new mighty.game.TableLayout(mighty.game.GameMode.FIVE_PLAYER,
-        seats), Set.copyOf(seats));
+    var order = mighty.game.PlayOrder.from(
+        new mighty.game.TableLayout(mighty.game.GameMode.FIVE_PLAYER,
+            seats), Set.copyOf(seats));
     var others = mighty.game.deal.DeckFactory.create().stream()
         .filter(c -> !owned.contains(c) && !kitty.contains(c)).toList();
     var hands = new HashMap<Seat, List<Card>>();
@@ -195,13 +203,14 @@ class HighNoTrumpTest {
         UnrevealedFriend.INSTANCE, List.of(), List.of());
     assertEquals(card("DA"), policy.choose(withAuction(first, auction)).card());
     var taken = List.of(
-        row(1, Trump.NO_TRUMP, p(0,"DA"), p(1,"D5"), p(2,"D6"), p(3,"D7"), p(4,"D8")),
-        row(2, Trump.NO_TRUMP, p(0,"DK"), p(1,"DJ"), p(2,"D9"), p(3,"D3"), p(4,"H4")));
+        row(1, Trump.NO_TRUMP, p(0, "DA"), p(1, "D5"), p(2, "D6"), p(3, "D7"), p(4, "D8")),
+        row(2, Trump.NO_TRUMP, p(0, "DK"), p(1, "DJ"), p(2, "D9"), p(3, "D3"), p(4, "H4")));
     var handover = view(0, 0, Trump.NO_TRUMP, 18, "SA JK D4 D2 H2 H3 C2 S5", discards,
         friend, UnrevealedFriend.INSTANCE, taken, List.of());
     assertEquals(card("C2"), policy.choose(withAuction(handover, auction)).card());
     var complete = new ArrayList<>(taken);
-    complete.add(row(3, Trump.NO_TRUMP, p(0,"C2"), p(1,"CA"), p(2,"C3"), p(3,"C4"), p(4,"C5")));
+    complete.add(
+        row(3, Trump.NO_TRUMP, p(0, "C2"), p(1, "CA"), p(2, "C3"), p(3, "C4"), p(4, "C5")));
     var response = view(1, 0, Trump.NO_TRUMP, 18, "CK CQ CJ C7 C6 S3 H6", "",
         friend, new RevealedFriend(new Seat(1)), complete, List.of());
     assertEquals(card("CK"), policy.choose(withAuction(response, auction)).card());
@@ -213,7 +222,8 @@ class HighNoTrumpTest {
 
   private static View withAuction(View base, List<PublicBid> auction) {
     var ctx = base.context();
-    return new View(base.self(), base.privateInfo(), base.role(), base.contract(), base.friendSelection(),
+    return new View(base.self(), base.privateInfo(), base.role(), base.contract(),
+        base.friendSelection(),
         new Context(ctx.playOrder(), ctx.declarer(), ctx.friendStatus(), ctx.history(),
             List.of(base.contract()), auction), base.trick());
   }
@@ -221,7 +231,7 @@ class HighNoTrumpTest {
   @ParameterizedTest
   @CsvSource({"HEART, HK", "SPADE HEART, S10"})
   void friendReturnsFirstAvailablePublicSignal(String signals, String expected) {
-    var trick = row(1, Trump.NO_TRUMP, p(0,"S3"), p(1,"SQ"), p(2,"S2"), p(3,"S4"), p(4,"S6"));
+    var trick = row(1, Trump.NO_TRUMP, p(0, "S3"), p(1, "SQ"), p(2, "S2"), p(3, "S4"), p(4, "S6"));
     var base = view(1, 0, Trump.NO_TRUMP, 20, "S10 S8 HK H2 D2 D4 D6 C2 C3", "",
         new CardFriend(card("SQ")), new RevealedFriend(new Seat(1)), List.of(trick), List.of());
     var contracts = new ArrayList<Bid>();
@@ -230,8 +240,10 @@ class HighNoTrumpTest {
     }
     contracts.add(base.contract());
     var ctx = base.context();
-    var v = new View(base.self(), base.privateInfo(), base.role(), base.contract(), base.friendSelection(),
-        new Context(ctx.playOrder(), ctx.declarer(), ctx.friendStatus(), ctx.history(), contracts), List.of());
+    var v = new View(base.self(), base.privateInfo(), base.role(), base.contract(),
+        base.friendSelection(),
+        new Context(ctx.playOrder(), ctx.declarer(), ctx.friendStatus(), ctx.history(), contracts),
+        List.of());
     assertEquals(card(expected), new RulePlayPolicy().choose(v).card());
   }
 }

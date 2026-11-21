@@ -31,10 +31,33 @@ public final class NoTrumpOpeningPlanner {
   public static NoTrumpOpeningPlan plan(BiddingHand hand, Collection<? extends Card> buried,
       FriendSelection selection, int points, List<Bid> history) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+    if (!hand.hasMighty(Trump.NO_TRUMP) && !hand.hasJoker() && hand.hasGun(Trump.NO_TRUMP)
+        && selection instanceof CardFriend friend
+        && friend.card().equals(Rules.mighty(Trump.NO_TRUMP))) {
+      var control = NoTrumpControlPlan.analyze(own, buried);
+      if (control.hasIndependentReturn()
+          && control.primary() != Rules.mighty(Trump.NO_TRUMP).suit()) {
+        var opening = own.stream().filter(StandardCard.class::isInstance)
+            .map(StandardCard.class::cast).filter(card -> card.suit() == control.primary())
+            .filter(card -> isTop(card, own, buried))
+            .max(Comparator.comparingInt(card -> card.rank().value()));
+        var returned = control.returnEntries().stream().sorted().findFirst();
+        return new NoTrumpOpeningPlan(selection, opening, returned, buried.size() == 3,
+            false, FORCE_JOKER);
+      }
+    }
     if (selection instanceof CardFriend called && called.card().equals(Rules.mighty(Trump.NO_TRUMP))
         && !hand.hasMighty(Trump.NO_TRUMP) && (hand.hasJoker() || !hand.hasGun(Trump.NO_TRUMP))) {
       var main = NoTrumpPlanner.withFriend(hand, buried, called.card()).primary();
       var holding = HoldingControl.analyze(own, List.copyOf(buried), Trump.NO_TRUMP, main);
+      var control = NoTrumpControlPlan.analyze(own, buried, main);
+      if (control.runBeforeSupport()) {
+        var opening = own.stream().filter(StandardCard.class::isInstance)
+            .map(StandardCard.class::cast).filter(card -> card.suit() == main)
+            .max(Comparator.comparingInt(card -> card.rank().value()));
+        return new NoTrumpOpeningPlan(selection, opening, Optional.empty(), buried.size() == 3,
+            false, RUN_PRIMARY);
+      }
       if (holding.length() >= 5) {
         boolean hasEntry = own.stream().filter(StandardCard.class::isInstance)
             .map(StandardCard.class::cast)

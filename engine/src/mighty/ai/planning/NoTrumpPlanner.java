@@ -3,6 +3,7 @@ package mighty.ai.planning;
 import java.util.*;
 import mighty.ai.bidding.BiddingHand;
 import mighty.game.rule.Rules;
+import mighty.game.deal.DeckFactory;
 import mighty.model.*;
 
 /**
@@ -56,6 +57,10 @@ public final class NoTrumpPlanner {
         (mighty || joker || gun) && (ownTops > 0 || mighty && joker && mainLength >= 6);
     if (!mighty && !joker && ownMainRun == 0) {
       available = false;
+    }
+    if (!mighty && !joker && gun) {
+      List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+      available &= NoTrumpControlPlan.analyze(own, excluded, primary).hasIndependentReturn();
     }
     return new NoTrumpPlan(available && !excluded.contains(friend), primary, friend, breaks,
         before);
@@ -184,7 +189,9 @@ public final class NoTrumpPlanner {
     return hand.ordinaryTopRunLength(connected, Trump.NO_TRUMP) >= 3 ? connected : primary(hand);
   }
 
-  /** 닷노 입찰과 실제 운영이 같은 주력 문양과 상위 한 장의 빈자리를 보도록 합니다. */
+  /**
+   * 닷노 입찰과 실제 운영이 같은 주력 문양과 상위 한 장의 빈자리를 보도록 합니다.
+   */
   public static Optional<Suit> jokerSweepSuit(BiddingHand hand) {
     if (!hand.hasJoker() || hand.hasMighty(Trump.NO_TRUMP)) {
       return Optional.empty();

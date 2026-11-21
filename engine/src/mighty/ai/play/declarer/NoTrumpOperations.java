@@ -39,45 +39,44 @@ final class NoTrumpOperations {
     return initial;
   }
 
-  static Optional<mighty.ai.play.PlayDecision> runPrimaryBeforeMightyFriend(
-      DeclarerPosition position) {
+  static Optional<mighty.ai.play.PlayDecision> continueOpeningPlan(DeclarerPosition position) {
     var view = position.view();
-    if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() != 15
+    if (view.contract().trump() != Trump.NO_TRUMP
         || !position.calls(Rules.mighty(Trump.NO_TRUMP))) {
       return Optional.empty();
     }
-    var primary = NoTrumpPlanner.jokerSweepSuit(BiddingHand.from(initialCards(position)));
-    if (primary.isEmpty()) {
+    var plan = openingPlan(position);
+    if (plan.purpose() != NoTrumpOpeningPlan.Purpose.RUN_PRIMARY) {
       return Optional.empty();
     }
-    Suit suit = primary.get();
-    for (var trick : view.context().history()) {
-      var lead = trick.cards().get(0).action();
-      boolean sameSuit = lead.card() instanceof StandardCard card && card.suit() == suit
-          || lead instanceof JokerLead joker && joker.declaredSuit() == suit;
-      if (!sameSuit || !trick.leader().equals(view.self()) || !trick.winner().equals(view.self())) {
-        return Optional.empty();
-      }
+    var initial = NoTrumpControlPlan.analyze(initialCards(position),
+        ((DeclarerInfo) view.privateInfo()).discardedCards());
+    var main = position.inSuit(initial.primary());
+    var outside = position.facts().cards().outsideCards(initial.primary()).stream()
+        .filter(c -> !c.equals(Rules.mighty(Trump.NO_TRUMP))).toList();
+    var tops = main.stream().filter(a -> position.facts().isSuitTop(a.card())).toList();
+    if (!tops.isEmpty() && !outside.isEmpty()) {
+      return Optional.of(new mighty.ai.play.PlayDecision(PlaySupport.highest(tops),
+          NoTrumpOpeningPlan.Purpose.RUN_PRIMARY.explanation()));
     }
-    var held = position.inSuit(suit);
-    if (held.isEmpty()) {
-      return Optional.empty();
+    if (!main.isEmpty() && !outside.isEmpty()) {
+      return position.legal().stream().filter(a -> a instanceof JokerLead lead
+              && lead.declaredSuit() == initial.primary()).findFirst()
+          .map(a -> new mighty.ai.play.PlayDecision(a,
+              "주력 탑카 뒤 남은 외부 상위를 조커로 소모하고 사이드 지원을 남깁니다."));
     }
-    var highest = PlaySupport.highest(held);
-    var outside = position.facts().cards().outsideCards(suit).stream()
-        .filter(card -> !card.equals(Rules.mighty(Trump.NO_TRUMP)))
-        .filter(card -> card.rank().value() > ((StandardCard) highest.card()).rank().value())
-        .count();
-    if (outside == 0) {
-      return Optional.of(new mighty.ai.play.PlayDecision(highest,
-          "주력의 일반 탑을 이어서 돌리고 마이티 프렌드 호출을 늦춥니다."));
+    var sides = position.ordinary().stream()
+        .filter(a -> ((StandardCard) a.card()).suit() != initial.primary()).toList();
+    var sideTops = sides.stream().filter(a -> position.facts().isSuitTop(a.card())).toList();
+    if (!sideTops.isEmpty()) {
+      return Optional.of(new mighty.ai.play.PlayDecision(PlaySupport.highest(sideTops),
+          "주력 소진 중 승격된 사이드 탑카를 먼저 사용합니다."));
     }
-    if (outside == 1 && highest.card().points() > 0) {
-      return position.legal().stream().filter(action -> action instanceof JokerLead lead
-          && lead.declaredSuit() == suit).findFirst().map(action -> new mighty.ai.play.PlayDecision(
-          action, "주력 점수 카드 위에 한 장만 남아 조커로 그 문양을 돌립니다."));
-    }
-    return Optional.empty();
+    return sides.stream().filter(a -> !position.facts().isSuitTop(a.card()))
+        .max(Comparator.comparingInt((Action a) -> a.card().points())
+            .thenComparingInt(a -> -((StandardCard) a.card()).rank().value()))
+        .map(a -> new mighty.ai.play.PlayDecision(a,
+            "자력 주력은 남기고 사이드에서 마이티 지원을 요청합니다."));
   }
 
   private static NoTrumpPlan initialPlan(DeclarerPosition position) {
@@ -262,7 +261,9 @@ final class NoTrumpOperations {
             "지정 프렌드가 맡은 문양과 다른 긴 문양의 반환을 마이티로 회수합니다."));
   }
 
-  /** 지정 문양의 반환을 받은 뒤 주력을 연달아 돌리되, 마이티는 후속 회수에 남깁니다. */
+  /**
+   * 지정 문양의 반환을 받은 뒤 주력을 연달아 돌리되, 마이티는 후속 회수에 남깁니다.
+   */
   static Optional<mighty.ai.play.PlayDecision> sweepPrimaryWithMightyReserve(
       DeclarerPosition position) {
     var view = position.view();
