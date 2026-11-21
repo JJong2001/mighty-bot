@@ -46,16 +46,11 @@ final class NoTrumpOperations {
         || !position.calls(Rules.mighty(Trump.NO_TRUMP))) {
       return Optional.empty();
     }
-    var initial = BiddingHand.from(initialCards(position));
-    Suit suit = initialPlan(position).primary();
-    var ranks = initial.ordinaryHolding(suit, Trump.NO_TRUMP).ranks();
-    int run = initial.ordinaryTopRunLength(suit, Trump.NO_TRUMP);
-    // 연속 탑 뒤의 점수 카드가 상위 한 장만 빠지면 살아나는 긴 문양을 먼저 돌립니다.
-    if (!initial.hasJoker() || ranks.size() < 4 || run < 2 || run >= ranks.size()
-        || ranks.get(run).value() < Rank.TEN.value()
-        || ranks.get(run - 1).value() - ranks.get(run).value() != 2) {
+    var primary = NoTrumpPlanner.jokerSweepSuit(BiddingHand.from(initialCards(position)));
+    if (primary.isEmpty()) {
       return Optional.empty();
     }
+    Suit suit = primary.get();
     for (var trick : view.context().history()) {
       var lead = trick.cards().get(0).action();
       boolean sameSuit = lead.card() instanceof StandardCard card && card.suit() == suit

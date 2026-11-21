@@ -58,9 +58,7 @@ final class FlexibleNoTrumpOpening {
       // 주력의 한 장벽을 뽑으면 내 점수 카드가 탑이 되고, 다른 문양으로도 선을 잡을 수 있습니다.
       boolean sideEntry = Arrays.stream(Suit.values()).anyMatch(suit -> suit != main
           && hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0);
-      var blocker = NoTrumpPlanner.missingTop(hand, List.of(), main);
-      if (sideEntry && blocker.filter(card -> card.rank().value() > Rank.TEN.value()
-          && NoTrumpPlanner.connectionGain(hand, card) >= 2).isPresent()) {
+      if (sideEntry && NoTrumpPlanner.jokerSweepSuit(hand).isPresent()) {
         return Optional.of("주력의 한 장벽을 조커로 뽑고 별도 문양의 탑과 마이티 프렌드로 회수합니다.");
       }
     }

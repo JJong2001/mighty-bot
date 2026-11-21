@@ -1,5 +1,6 @@
 package mighty.ai.bidding;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -61,16 +62,18 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     List<BidAssessment> assessments = evaluator.assess(hand).stream()
         .filter(BidAssessment::canCompete).toList();
     List<Candidate> noTrump = candidates(assessments, legal, Trump.NO_TRUMP);
-    if (!noTrump.isEmpty()) {
+    if (!noTrump.isEmpty() && !noTrump.get(0).assessment().compareWithSuitedBids()) {
       // 노기루 성공 운영이 보이면 바닥 뒤 기루 전환 선택권을 남기고 우선 비딩합니다.
       return noTrump.stream().max(CANDIDATE_ORDER).orElseThrow().offer();
     }
-    List<Candidate> suited = assessments.stream()
+    List<Candidate> contenders = new ArrayList<>(assessments.stream()
         .filter(assessment -> assessment.trump() != Trump.NO_TRUMP)
         .flatMap(assessment -> candidates(List.of(assessment), legal, assessment.trump()).stream())
-        .toList();
-    if (!suited.isEmpty()) {
-      return bestSuitedOffer(hand, suited);
+        .toList());
+    // 별도 회수 탑이 없어 기존 노기루 자격을 놓친 패도 주력 운영으로 얻을 정산점을 비교합니다.
+    contenders.addAll(noTrump);
+    if (!contenders.isEmpty()) {
+      return bestScoringOffer(hand, contenders);
     }
     if (view.bidding().highestBid().isPresent()) {
       return BidPass.INSTANCE;
@@ -82,12 +85,12 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     return new BidOffer(new Bid(Bid.MIN_POINTS, longest));
   }
 
-  private BidOffer bestSuitedOffer(BiddingHand hand, List<Candidate> suited) {
-    if (suited.size() == 1) {
-      return suited.get(0).offer();
+  private BidOffer bestScoringOffer(BiddingHand hand, List<Candidate> contenders) {
+    if (contenders.size() == 1) {
+      return contenders.get(0).offer();
     }
     // 백런의 손실까지 포함한 평균 정산점으로 상위 두 후보를 찾습니다.
-    var finalists = suited.stream()
+    var finalists = contenders.stream()
         .map(candidate -> new ScoredCandidate(candidate,
             expectedScores.initialBiddingSamples(hand, candidate.offer().bid())))
         .sorted(SCORE_ORDER.reversed()).limit(2).toList();

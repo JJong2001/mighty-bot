@@ -13,6 +13,7 @@ import mighty.model.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class RuleBiddingPolicyTest {
@@ -40,7 +41,6 @@ class RuleBiddingPolicyTest {
 
   @ParameterizedTest
   @ValueSource(strings = {
-      "SQ S3 HJ H10 H9 CA CK CJ C2 JK",
       "SK S3 HJ H10 H9 CA CK C10 C2 JK",
       "SA SQ S5 S3 D10 HA HK H3 H2 CK"
   })
@@ -50,6 +50,23 @@ class RuleBiddingPolicyTest {
     var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
         List.of());
     assertFalse(assessment.canCompete());
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+      "SQ S3 HJ H10 H9 CA CK CJ C2 JK, NO_TRUMP",
+      "S4 S3 H4 H8 H9 CA CK CJ C2 JK, CLUB"
+  })
+  @DisplayName("별도 회수 탑이 없는 주력 패는 닷노와 기루의 정산점을 비교해 입찰한다")
+  void comparesJokerSweepAgainstSuitedBid(String cards, Trump selected) {
+    var owned = mighty.data.CardParser.parseList(cards);
+    var hand = BiddingHand.from(owned);
+    var assessment = NoTrumpBidEvaluator.assess(CandidateResources.from(hand, Trump.NO_TRUMP),
+        List.of());
+    assertTrue(assessment.compareWithSuitedBids());
+    assertEquals(15, assessment.ceilingPoints());
+    assertEquals(new BidOffer(new Bid(15, selected)),
+        new RuleBiddingPolicy().choose(new BiddingView(new Seat(0), owned, 40, state())));
   }
 
   @Test

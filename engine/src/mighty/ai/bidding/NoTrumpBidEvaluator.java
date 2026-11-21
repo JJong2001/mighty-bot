@@ -69,6 +69,12 @@ final class NoTrumpBidEvaluator {
       if (route.isPresent()) {
         return new BidAssessment(Trump.NO_TRUMP, true, 15, 15, 165, List.of(route.get()));
       }
+      if (NoTrumpPlanner.jokerSweepSuit(hand).isPresent()
+          && Arrays.stream(Suit.values()).mapToInt(s -> hand.holding(s).size()).sum() == 9) {
+        // 조커와 일반 카드 아홉 장으로 바닥을 보기 전의 오마 입찰만 평가합니다.
+        return new BidAssessment(Trump.NO_TRUMP, true, 15, 15, 165,
+            List.of("조커로 주력을 살리는 닷노와 기루의 평균 정산점을 비교합니다."), true);
+      }
     }
     return unavailable(resources);
   }
