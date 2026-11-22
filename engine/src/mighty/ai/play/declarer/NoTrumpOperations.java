@@ -39,11 +39,6 @@ final class NoTrumpOperations {
     return initial;
   }
 
-<<<<<<< Updated upstream
-  static Optional<mighty.ai.play.PlayDecision> continueOpeningPlan(DeclarerPosition position) {
-    var view = position.view();
-=======
-<<<<<<< HEAD
   static Optional<mighty.ai.play.PlayDecision> cashSideTopsBeforeFriend(DeclarerPosition position) {
     var view = position.view();
     if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() != 15
@@ -110,13 +105,8 @@ final class NoTrumpOperations {
         .findFirst().map(a -> new mighty.ai.play.PlayDecision(a, "조커로 선을 회수해 남은 탑을 돌립니다."));
   }
 
-  static Optional<mighty.ai.play.PlayDecision> runPrimaryBeforeMightyFriend(
-      DeclarerPosition position) {
-=======
   static Optional<mighty.ai.play.PlayDecision> continueOpeningPlan(DeclarerPosition position) {
->>>>>>> 3cd203526fafdc86832eb1320e874ad0bb72900d
     var view = position.view();
->>>>>>> Stashed changes
     if (view.contract().trump() != Trump.NO_TRUMP
         || !position.calls(Rules.mighty(Trump.NO_TRUMP))) {
       return Optional.empty();

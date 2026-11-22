@@ -30,7 +30,7 @@ final class HighNoTrumpPlay {
     return HighNoTrumpPlan.forContract(hand, bid);
   }
 
-  static Optional<PlayDecision> lead(DeclarerPosition position) {
+  static Optional<PlayDecision> leadToBidder(DeclarerPosition position) {
     var view = position.view();
     if (position.needsFriendCall() && view.contract().trump() == Trump.NO_TRUMP
         && view.contract().points() >= 17 && !view.context().auction().isEmpty()) {
@@ -62,6 +62,11 @@ final class HighNoTrumpPlay {
         }
       }
     }
+    return Optional.empty();
+  }
+
+  static Optional<PlayDecision> lead(DeclarerPosition position) {
+    var view = position.view();
     var route = route(position);
     if (route.isEmpty() || !(view.friendSelection() instanceof CardFriend friend)) {
       return Optional.empty();

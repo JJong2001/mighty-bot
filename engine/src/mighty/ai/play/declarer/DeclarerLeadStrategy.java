@@ -29,24 +29,14 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> jokers = position.legal().stream().filter(action -> action instanceof JokerLead)
         .toList();
-<<<<<<< Updated upstream
-=======
-<<<<<<< HEAD
-    var high = HighNoTrumpPlay.lead(position);
-    if (high.isPresent()) {
-      return high.get();
+    var bidder = HighNoTrumpPlay.leadToBidder(position);
+    if (bidder.isPresent()) {
+      return bidder.get();
     }
     var spread = NoTrumpOperations.cashSideTopsBeforeFriend(position);
     if (spread.isPresent()) {
       return spread.get();
     }
-    var runningSuit = NoTrumpOperations.runPrimaryBeforeMightyFriend(position);
-    if (runningSuit.isPresent()) {
-      return runningSuit.get();
-    }
-=======
->>>>>>> 3cd203526fafdc86832eb1320e874ad0bb72900d
->>>>>>> Stashed changes
     if (view.trickNumber().isFirst() && view.contract().trump() == Trump.NO_TRUMP) {
       var plan = NoTrumpOperations.openingPlan(position);
       if (plan.opening().isPresent()) {
