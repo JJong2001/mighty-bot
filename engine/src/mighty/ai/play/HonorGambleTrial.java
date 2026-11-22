@@ -14,6 +14,7 @@ import mighty.game.action.Action;
 import mighty.game.bidding.BidOffer;
 import mighty.game.bidding.BiddingResult;
 import mighty.game.friend.SpecialFriend;
+import mighty.game.friend.RevealedFriend;
 import mighty.game.observation.DeclarerInfo;
 import mighty.game.observation.View;
 import mighty.game.round.RoundSettlement;
@@ -27,6 +28,7 @@ final class HonorGambleTrial {
   private static final int SCREEN_DEALS = 24;
   private static final int CONFIRMATION_DEALS = 400;
   private static final int SPREAD_DEALS = 32;
+  private static final int RUFF_DEALS = 32;
 
   private record Deal(Map<Seat, List<Card>> hands, List<Card> buried) {}
   private record Outcome(boolean success, int settlement) {}
@@ -57,6 +59,57 @@ final class HonorGambleTrial {
   }
 
   private HonorGambleTrial() {}
+
+  static PlayDecision compareRuffLeads(View view, PlayFacts facts, PlayDecision usual,
+      List<Action> sideLeads, RulePlayPolicy policy) {
+    var friend = ((RevealedFriend) view.context().friendStatus()).seat();
+    var past = facts.cards().publicHistory().completedPlays();
+    var pool = new ArrayList<>(facts.cards().outsideCards());
+    var random = new Random(view.hand().stream().map(Card::toCode).sorted().toList().hashCode());
+    int[] sideWins = new int[sideLeads.size()];
+    int[] rescuedByFriend = new int[sideLeads.size()];
+    int samples = 0;
+    int usualWins = 0;
+    for (int attempt = 0; samples < RUFF_DEALS && attempt < RUFF_DEALS * 24; attempt++) {
+      var deal = draw(view, pool, past, random);
+      var control = position(view, deal, past);
+      if (control.isEmpty()) {
+        continue;
+      }
+      boolean drawn = finish(control.get(), view, usual.action(), policy::usualDecision).success();
+      samples++;
+      if (drawn && ++usualWins * 2 >= RUFF_DEALS) {
+        return usual;
+      }
+      for (int index = 0; index < sideLeads.size(); index++) {
+        var round = position(view, deal, past).orElseThrow();
+        if (finish(round, view, sideLeads.get(index), policy::usualDecision).success()) {
+          sideWins[index]++;
+          var trick = round.history().get(view.context().history().size());
+          // 기존 수로는 실패한 같은 배분에서 프렌드가 첫 부기루에 실제로 간을 쳤는지 확인합니다.
+          if (!drawn && trick.winner().equals(friend) && trick.cards().stream().anyMatch(play ->
+              play.seat().equals(friend) && play.action().card() instanceof StandardCard card
+                  && view.contract().trump().matches(card.suit())
+                  && !card.equals(mighty.game.rule.Rules.mighty(view.contract().trump())))) {
+            rescuedByFriend[index]++;
+          }
+        }
+      }
+    }
+    if (samples < RUFF_DEALS) {
+      return usual;
+    }
+    int best = -1;
+    for (int index = 0; index < sideLeads.size(); index++) {
+      if (rescuedByFriend[index] >= 2 && sideWins[index] >= usualWins + 2
+          && (best < 0 || sideWins[index] > sideWins[best])) {
+        best = index;
+      }
+    }
+    return best < 0 ? usual : new PlayDecision(sideLeads.get(best), String.format(
+        "기루를 뽑으면 %d/%d, 부기루를 먼저 내면 %d/%d 성공했습니다. 그중 %d회는 프렌드의 간으로 공약을 살렸습니다.",
+        usualWins, samples, sideWins[best], samples, rescuedByFriend[best]));
+  }
 
   static PlayDecision compareSpreadLead(View view, PlayFacts facts, PlayDecision usual,
       PlayDecision top, RulePlayPolicy policy) {

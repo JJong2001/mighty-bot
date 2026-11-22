@@ -38,6 +38,10 @@ public final class RulePlayPolicy implements PlayPolicy {
     if (top.isPresent() && !top.get().action().equals(usual.action())) {
       return HonorGambleTrial.compareSpreadLead(view, facts, usual, top.get(), this);
     }
+    var ruffLeads = LastTrumpSupport.candidates(view, facts, legal, usual.action());
+    if (!ruffLeads.isEmpty()) {
+      return HonorGambleTrial.compareRuffLeads(view, facts, usual, ruffLeads, this);
+    }
     return HonorGamble.choose(view, facts, legal, usual, this);
   }
 
