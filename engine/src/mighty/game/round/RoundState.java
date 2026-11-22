@@ -310,7 +310,8 @@ public final class RoundState {
         currentView())) {
       throw new IllegalArgumentException("자기 선에서 모든 순서의 승리를 공개 정보로 입증해야 합니다.");
     }
-    if (selection.orElseThrow() instanceof CardFriend friend) {
+    // 이미 나온 지정 카드는 남은 손패에 없으므로 공개된 팀을 그대로 정산합니다.
+    if (friendStatus instanceof UnrevealedFriend && selection.orElseThrow() instanceof CardFriend friend) {
       friendStatus = NoFriend.INSTANCE;
       for (var entry : hands.entrySet()) {
         if (!entry.getKey().equals(declarer) && entry.getValue().contains(friend.card())) {

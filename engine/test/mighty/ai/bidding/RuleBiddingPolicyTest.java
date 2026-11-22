@@ -2,13 +2,21 @@ package mighty.ai.bidding;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
+import mighty.ai.planning.BidderSupportPlan;
+import mighty.ai.preparation.PreparationPlanner;
+import mighty.ai.preparation.RuleFriendPolicy;
+import mighty.data.CardParser;
 import mighty.game.Seat;
 import mighty.game.bidding.*;
 import mighty.game.deal.DealFormat;
 import mighty.game.deal.DealParticipants;
+import mighty.game.friend.CardFriend;
 import mighty.game.observation.BiddingView;
+import mighty.game.observation.DiscardView;
+import mighty.game.observation.FriendView;
 import mighty.model.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -354,5 +362,88 @@ class RuleBiddingPolicyTest {
     assertEquals(BidPass.INSTANCE,
         policy.choose(new BiddingView(new Seat(1), noJoker, 40, over16)));
   }
+  @ParameterizedTest
+  @ValueSource(strings = {"SA SK SJ S3 CA CK C7 HA H3 JK", "SA SK SJ S3 DA DK D7 HA H3 JK"})
+  void competesInNoTrumpWithTwoExtendableSuitsAndBothSpecials(String held) {
+    var cards = mighty.data.CardParser.parseList(held);
+    var policy = new RuleBiddingPolicy();
+    var self = new Seat(0);
+    var opponent = new Seat(1);
+    var bid = state();
+    var opening = policy.choose(new BiddingView(self, cards, 40, bid));
+    assertEquals(new BidOffer(new Bid(15, Trump.NO_TRUMP)), opening);
+    bid = bid.submit(new PublicBid(self, opening));
+    for (int points : List.of(16, 17)) {
+      bid = bid.submit(new PublicBid(opponent, new BidOffer(new Bid(points, Trump.HEART))));
+      if (points == 16) {
+        for (int seat = 2; seat < 5; seat++) {
+          bid = bid.submit(new PublicBid(new Seat(seat), BidPass.INSTANCE));
+        }
+      }
+      var offer = policy.choose(new BiddingView(self, cards, 40, bid));
+      assertEquals(new BidOffer(new Bid(points, Trump.NO_TRUMP)), offer);
+      if (points == 17) {
+        var weaker = mighty.data.CardParser.parseList(held.replace("SK", "S9"));
+        assertEquals(BidPass.INSTANCE, policy.choose(new BiddingView(self, weaker, 40, bid)));
+      }
+      bid = bid.submit(new PublicBid(self, offer));
+    }
+    bid = bid.submit(new PublicBid(opponent, new BidOffer(new Bid(18, Trump.HEART))));
+    assertEquals(new BidOffer(new Bid(18, Trump.NO_TRUMP)),
+        policy.choose(new BiddingView(self, cards, 40, bid)));
+  }
 
+  @ParameterizedTest
+  @CsvSource({
+      "SA SK SJ S3 CA CK C7 HA H3 JK, HEART, HK",
+      "SA SK SJ S3 HA HK H7 DA D3 JK, DIAMOND, DK",
+      "SA SK SJ S3 CA CK HA HK H3 JK, HEART, HQ"
+  })
+  void infersOutsideHonorFromPublicBidAndOwnControls(String held, Trump trump, String expected) {
+    var self = new Seat(0);
+    var bidder = new Seat(1);
+    var hand = BiddingHand.from(CardParser.parseList(held));
+    var signal = new PublicBid(bidder, new BidOffer(new Bid(18, trump)));
+    var target = CardParser.parse(expected);
+    var award = new Bid(18, Trump.NO_TRUMP);
+    var plan = BidderSupportPlan.forContract(hand, self, List.of(signal), award)
+        .orElseThrow();
+    assertEquals(target, plan.called());
+    var afterBurial = BidderSupportPlan.forContract(hand, self, List.of(signal),
+        award, List.of(target));
+    assertTrue(afterBurial.isPresent());
+    assertNotEquals(target, afterBurial.get().called());
+    assertTrue(BidderSupportPlan.find(hand, bidder, List.of(signal)).isEmpty());
+    assertTrue(BidderSupportPlan.find(hand, self, List.of(new PublicBid(bidder,
+        new BidOffer(new Bid(16, trump))))).isEmpty());
+  }
+
+  @ParameterizedTest
+  @CsvSource({"D2 D4 D6, HK", "D2 DJ DQ, SQ", "HK D2 D4, HQ"})
+  void comparesTheBiddersHonorWithTheUsualFriendAfterKitty(String kitty, String expected) {
+    var self = new Seat(0);
+    var opponent = new Seat(1);
+    var contract = new Bid(18, Trump.NO_TRUMP);
+    var auction = new ArrayList<PublicBid>();
+    for (int points = 15; points < 18; points++) {
+      auction.add(new PublicBid(self, new BidOffer(new Bid(points, Trump.NO_TRUMP))));
+      auction.add(new PublicBid(opponent, new BidOffer(new Bid(points + 1, Trump.HEART))));
+      if (points == 15) {
+        for (int seat = 2; seat < 5; seat++) {
+          auction.add(new PublicBid(new Seat(seat), BidPass.INSTANCE));
+        }
+      }
+    }
+    auction.add(new PublicBid(self, new BidOffer(contract)));
+    auction.add(new PublicBid(opponent, BidPass.INSTANCE));
+    var seen = CardParser.parseList("SA SK SJ S3 HA H3 CA CK C7 JK " + kitty);
+    var plan = new PreparationPlanner().choose(new DiscardView(self, contract, seen, auction),
+        contract, List.of(contract));
+    var kept = new ArrayList<>(seen);
+    kept.removeAll(plan.discarded());
+    var view = new FriendView(self, plan.contract(), kept, plan.discarded(),
+        List.of(contract), auction);
+    assertEquals(new CardFriend(CardParser.parse(expected)), plan.friend());
+    assertEquals(plan.friend(), new RuleFriendPolicy().choose(view));
+  }
 }

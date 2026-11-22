@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Optional;
 import mighty.ai.bidding.BidExpectedScoreEvaluator.ScoreSamples;
 import mighty.ai.planning.HighNoTrumpPlan;
+import mighty.ai.planning.SpreadNoTrumpPlan;
 import mighty.game.bidding.Bid;
 import mighty.game.bidding.BidOffer;
 import mighty.game.bidding.BidPass;
@@ -84,7 +85,7 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
       if (!competing && plan.hasTwoSources(hand)) {
         return new BidOffer(new Bid(16, plan.suited()));
       }
-      int ceiling = plan.competitiveCeiling();
+      int ceiling = SpreadNoTrumpPlan.available(hand) ? 17 : plan.competitiveCeiling();
       boolean signalled = plan.hasTwoSources(hand) && view.bidding().history().stream()
           .anyMatch(entry -> entry.seat().equals(view.self()) && entry.action() instanceof BidOffer offer
               && offer.bid().equals(new Bid(16, plan.suited())));

@@ -2,6 +2,7 @@ package mighty.ai.preparation;
 
 import java.util.Objects;
 import mighty.ai.bidding.BiddingHand;
+import mighty.ai.bidding.ContestedSuitAuction;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.BidderSupportPlan;
 import mighty.ai.planning.NoTrumpPlanner;
@@ -24,17 +25,26 @@ public final class RuleFriendPolicy implements FriendPolicy {
   @Override
   public FriendSelection choose(FriendView view) {
     Objects.requireNonNull(view);
+    var hand = BiddingHand.from(view.hand());
+    if (hand.hasMighty(Trump.NO_TRUMP)) {
+      var support = BidderSupportPlan.forContract(hand, view.self(), view.auction(), view.contract(),
+          view.discardedCards()).filter(plan -> !owns(view, plan.called()));
+      if (support.isPresent()) {
+        var plan = support.get();
+        return plan.callsNextHonor()
+            ? ContestedSuitAuction.preferredFriend(view, plan, chooseUsual(view, hand))
+            : new CardFriend(plan.called());
+      }
+    }
+    return chooseUsual(view, hand);
+  }
+
+  private FriendSelection chooseUsual(FriendView view, BiddingHand hand) {
     Card mighty = Rules.mighty(view.contract().trump());
     if (!owns(view, mighty)) {
       return new CardFriend(mighty);
     }
-    BiddingHand hand = BiddingHand.from(view.hand());
     if (view.contract().trump() == Trump.NO_TRUMP) {
-      var bidder = BidderSupportPlan.forContract(hand, view.self(), view.auction(), view.contract())
-          .filter(plan -> !owns(view, plan.called()));
-      if (bidder.isPresent()) {
-        return new CardFriend(bidder.get().called());
-      }
       if (view.contract().points() == 16 || view.contract().points() == 17
           || view.contract().points() == 20) {
         var support = HighNoTrumpPlan.find(hand)

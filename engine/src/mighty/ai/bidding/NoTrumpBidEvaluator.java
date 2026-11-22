@@ -3,6 +3,7 @@ package mighty.ai.bidding;
 import java.util.*;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.NoTrumpPlanner;
+import mighty.ai.planning.SpreadNoTrumpPlan;
 import mighty.ai.planning.distribution.NoTrumpDistributionEvaluator;
 import mighty.model.*;
 
@@ -15,6 +16,18 @@ final class NoTrumpBidEvaluator {
   }
 
   static BidAssessment assess(CandidateResources resources, Collection<? extends Card> excluded) {
+    var usual = assessControl(resources, excluded);
+    if (!excluded.isEmpty() || usual.ceilingPoints() >= 17
+        || !SpreadNoTrumpPlan.available(resources.hand())) {
+      return usual;
+    }
+    int opening = usual.canCompete() ? Math.max(15, usual.openingPoints()) : 15;
+    return new BidAssessment(Trump.NO_TRUMP, true, opening, 17, 185, List.of(
+        "세 문양에 일반 탑이 있고 마이티와 조커로 선을 회수할 수 있어 바닥 전에는 곱노까지 경쟁합니다."));
+  }
+
+  private static BidAssessment assessControl(CandidateResources resources,
+      Collection<? extends Card> excluded) {
     var hand = resources.hand();
     if (excluded.isEmpty() && Arrays.stream(Suit.values()).mapToInt(s -> hand.holding(s).size())
         .sum() + (hand.hasJoker() ? 1 : 0) == 10) {

@@ -35,7 +35,9 @@ final class HighNoTrumpPlay {
     if (position.needsFriendCall() && view.contract().trump() == Trump.NO_TRUMP
         && view.contract().points() >= 17 && !view.context().auction().isEmpty()) {
       var bidder = BidderSupportPlan.forContract(BiddingHand.from(NoTrumpOperations.initialCards(position)),
-          view.self(), view.context().auction(), view.contract()).filter(p -> position.calls(p.called()));
+          view.self(), view.context().auction(), view.contract(),
+          ((mighty.game.observation.DeclarerInfo) view.privateInfo()).discardedCards())
+          .filter(p -> position.calls(p.called()));
       if (bidder.isPresent()) {
         var target = bidder.get().transfer();
         var cash = position.ordinary().stream().filter(a -> ((StandardCard) a.card()).suit() != target)
@@ -43,6 +45,16 @@ final class HighNoTrumpPlay {
         if (!cash.isEmpty()) {
           return Optional.of(new PlayDecision(PlaySupport.highest(cash),
               "선입찰자에게 선을 넘기기 전에 내 독립 탑을 먼저 처리합니다."));
+        }
+        if (bidder.get().callsNextHonor()) {
+          // 상대의 상위패를 프렌드로 부른 경우 그 위에 있는 내 일반 탑부터 현금화합니다.
+          var above = position.inSuit(target).stream().filter(a ->
+              ((StandardCard) a.card()).rank().value() > bidder.get().called().rank().value())
+              .toList();
+          if (!above.isEmpty()) {
+            return Optional.of(new PlayDecision(PlaySupport.highest(above),
+                "프렌드 위의 내 탑을 먼저 쓰고, 남은 물패로 선을 넘깁니다."));
+          }
         }
         var transfer = low(position.inSuit(target), "선입찰 문양의 물패로 프렌드의 추가 승리를 연결합니다.");
         if (transfer.isPresent()) {

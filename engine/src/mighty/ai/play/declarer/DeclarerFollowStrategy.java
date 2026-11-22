@@ -33,6 +33,10 @@ final class DeclarerFollowStrategy {
     if (signal.isPresent()) {
       return signal.get();
     }
+    var spread = NoTrumpOperations.followAfterSideTops(position);
+    if (spread.isPresent()) {
+      return spread.get();
+    }
     var primaryReturn = NoTrumpOperations.recoverPrimaryReturn(position);
     if (primaryReturn.isPresent()) {
       return primaryReturn.get();

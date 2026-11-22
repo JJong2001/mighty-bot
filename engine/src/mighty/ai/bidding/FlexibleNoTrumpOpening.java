@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import mighty.ai.planning.NoTrumpPlan;
 import mighty.ai.planning.NoTrumpPlanner;
+import mighty.ai.planning.SpreadNoTrumpPlan;
 import mighty.game.rule.Rules;
 import mighty.model.*;
 
@@ -42,6 +43,9 @@ final class FlexibleNoTrumpOpening {
   }
 
   static boolean supportedBySpreadTops(BiddingHand hand, int points) {
+    if (points <= 17 && SpreadNoTrumpPlan.available(hand)) {
+      return true;
+    }
     return available(hand) && Arrays.stream(Suit.values())
         .filter(suit -> hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0).count() >= 2
         && assess(hand).ceilingPoints() >= points;
