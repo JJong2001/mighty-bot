@@ -6,6 +6,7 @@ import mighty.ai.planning.*;
 import mighty.ai.play.PlaySupport;
 import mighty.ai.play.SpecialCardPlan;
 import mighty.game.action.*;
+import mighty.game.bidding.Bid;
 import mighty.game.friend.CardFriend;
 import mighty.game.observation.DeclarerInfo;
 import mighty.game.rule.Rules;
@@ -41,7 +42,7 @@ final class NoTrumpOperations {
 
   static Optional<mighty.ai.play.PlayDecision> cashSideTopsBeforeFriend(DeclarerPosition position) {
     var view = position.view();
-    if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() != 15
+    if (!allowsSpreadTopPlay(view.contract())
         || !position.needsFriendCall() || !(view.friendSelection() instanceof CardFriend friend)
         || !(friend.card() instanceof StandardCard target)) {
       return Optional.empty();
@@ -103,6 +104,10 @@ final class NoTrumpOperations {
         .filter(a -> a.card() instanceof Joker
             && facts.isSecured(new mighty.game.trick.PublicPlay(view.self(), a)))
         .findFirst().map(a -> new mighty.ai.play.PlayDecision(a, "조커로 선을 회수해 남은 탑을 돌립니다."));
+  }
+
+  private static boolean allowsSpreadTopPlay(Bid contract) {
+    return contract.trump() == Trump.NO_TRUMP && contract.points() >= 15 && contract.points() <= 17;
   }
 
   static Optional<mighty.ai.play.PlayDecision> continueOpeningPlan(DeclarerPosition position) {

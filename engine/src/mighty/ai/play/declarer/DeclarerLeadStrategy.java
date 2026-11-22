@@ -33,9 +33,11 @@ final class DeclarerLeadStrategy {
     if (bidder.isPresent()) {
       return bidder.get();
     }
-    var spread = NoTrumpOperations.cashSideTopsBeforeFriend(position);
-    if (spread.isPresent()) {
-      return spread.get();
+    if (view.contract().points() == 15) {
+      var spread = NoTrumpOperations.cashSideTopsBeforeFriend(position);
+      if (spread.isPresent()) {
+        return spread.get();
+      }
     }
     if (view.trickNumber().isFirst() && view.contract().trump() == Trump.NO_TRUMP) {
       var plan = NoTrumpOperations.openingPlan(position);

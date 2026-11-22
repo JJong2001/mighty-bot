@@ -2,6 +2,7 @@ package mighty.ai.play;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import mighty.ai.play.declarer.DeclarerStrategy;
 import mighty.ai.play.friend.FriendStrategy;
 import mighty.ai.play.opposition.OppositionStrategy;
@@ -16,7 +17,7 @@ import mighty.model.Trump;
  */
 public final class RulePlayPolicy implements PlayPolicy {
 
-  private final RoleStrategy declarerStrategy = new DeclarerStrategy();
+  private final DeclarerStrategy declarerStrategy = new DeclarerStrategy();
   private final RoleStrategy friendStrategy = new FriendStrategy();
   private final RoleStrategy oppositionStrategy = new OppositionStrategy();
 
@@ -33,6 +34,10 @@ public final class RulePlayPolicy implements PlayPolicy {
     PlayFacts facts = new PlayFacts(view);
     List<Action> legal = policyCandidates(view, facts);
     var usual = usualDecision(view, facts, legal);
+    var top = spreadTopLead(view, facts, legal);
+    if (top.isPresent() && !top.get().action().equals(usual.action())) {
+      return HonorGambleTrial.compareSpreadLead(view, facts, usual, top.get(), this);
+    }
     return HonorGamble.choose(view, facts, legal, usual, this);
   }
 
@@ -40,6 +45,17 @@ public final class RulePlayPolicy implements PlayPolicy {
   PlayDecision usualDecision(View view) {
     var facts = new PlayFacts(view);
     return usualDecision(view, facts, policyCandidates(view, facts));
+  }
+
+  PlayDecision spreadTopContinuation(View view) {
+    var facts = new PlayFacts(view);
+    var legal = policyCandidates(view, facts);
+    return spreadTopLead(view, facts, legal).orElseGet(() -> usualDecision(view, facts, legal));
+  }
+
+  private Optional<PlayDecision> spreadTopLead(View view, PlayFacts facts, List<Action> legal) {
+    return declarerStrategy.spreadTopLead(view, facts, legal)
+        .map(decision -> finishDecision(decision, view, facts, legal));
   }
 
   private PlayDecision usualDecision(View view, PlayFacts facts, List<Action> legal) {

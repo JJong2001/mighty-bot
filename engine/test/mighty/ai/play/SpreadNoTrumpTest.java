@@ -23,21 +23,25 @@ import mighty.game.trick.PublicTrick;
 import mighty.model.Card;
 import mighty.model.Trump;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class SpreadNoTrumpTest {
 
   @Test
   void buriesTheUncontrolledSuitAndCashesSideTopsBeforeCalling() {
+    int points = 15;
     var trump = Trump.NO_TRUMP;
-    var contract = new Bid(15, trump);
+    var contract = new Bid(points, trump);
     var cards = CardParser.parseList("SA SK SJ S3 HA H3 CA CK C7 JK D2 D4 D6");
     var plan = new PreparationPlanner().choose(new DiscardView(new Seat(0), contract, cards));
     assertEquals(contract, plan.contract());
     assertEquals(Set.copyOf(CardParser.parseList("D2 D4 D6")), Set.copyOf(plan.discarded()));
-    assertEquals(new CardFriend(card("SQ")), plan.friend());
-
+    var selection = plan.friend();
+    assertEquals(new CardFriend(card("SQ")), selection);
     var kept = new ArrayList<>(cards);
     kept.removeAll(plan.discarded());
+    var buried = codes(plan.discarded());
     var history = new ArrayList<PublicTrick>();
     var policy = new RulePlayPolicy();
     String[][] plays = {
@@ -47,7 +51,7 @@ class SpreadNoTrumpTest {
         {"S3", "SQ", "S4", "S5", "S2"}
     };
     for (var trick : plays) {
-      var view = view(0, 0, trump, 15, codes(kept), codes(plan.discarded()), plan.friend(),
+      var view = view(0, 0, trump, points, codes(kept), buried, selection,
           UnrevealedFriend.INSTANCE, history, List.of());
       var action = policy.choose(view);
       assertEquals(card(trick[0]), action.card());
@@ -57,20 +61,36 @@ class SpreadNoTrumpTest {
     }
     // 프렌드가 다이아 탑으로 돌아오면 스페이드 회수와 조커를 지키고 사이드 물패를 버립니다.
     var friend = new RevealedFriend(new Seat(1));
-    var returnView = view(0, 0, trump, 15, codes(kept), codes(plan.discarded()), plan.friend(),
+    var returnView = view(0, 0, trump, points, codes(kept), buried, selection,
         friend, history, List.of(p(1, "DA"), p(2, "D5"), p(3, "D7"), p(4, "D8")));
     assertTrue(Set.of(card("C7"), card("H3")).contains(policy.choose(returnView).card()));
-    var cheap = view(0, 0, trump, 15, codes(kept), codes(plan.discarded()), plan.friend(),
-        friend, history, List.of(p(1, "D3"), p(2, "D5"), p(3, "D7"), p(4, "D8")));
+    var cheap = view(0, 0, trump, points, codes(kept), buried, selection,
+        friend, history, List.of(p(1, "D3"), p(2, "D5"), p(3, "D10"), p(4, "DJ")));
     assertTrue(Set.of(card("C7"), card("H3")).contains(policy.choose(cheap).card()));
-    var costly = view(0, 0, trump, 15, codes(kept), codes(plan.discarded()), plan.friend(),
+    var costly = view(0, 0, trump, points, codes(kept), buried, selection,
         friend, history, List.of(p(1, "D3"), p(2, "D10"), p(3, "DJ"), p(4, "DQ")));
     assertEquals(card("JK"), policy.choose(costly).card());
     kept.remove(card("JK"));
     history.add(row(5, trump, p(1, "D3"), p(2, "D10"), p(3, "DJ"), p(4, "DQ"), p(0, "JK")));
-    var regained = view(0, 0, trump, 15, codes(kept), codes(plan.discarded()), plan.friend(),
+    var regained = view(0, 0, trump, points, codes(kept), buried, selection,
         friend, history, List.of());
     assertTrue(Set.of(card("SA"), card("SK"), card("SJ")).contains(policy.choose(regained).card()));
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {16, 17})
+  void choosesBetweenSideTopsAndCallingFriendByContractSuccess(int points) {
+    var policy = new RulePlayPolicy();
+    var friend = new CardFriend(card("SQ"));
+    var sideTops = view(0, 0, Trump.NO_TRUMP, points, "SA SK S6 S2 HA HK H3 CA C3 JK",
+        "D2 D4 D6", friend, UnrevealedFriend.INSTANCE, List.of(), List.of());
+    assertEquals(card("S2"), policy.usualDecision(sideTops).action().card());
+    assertEquals(card("HA"), policy.choose(sideTops).card());
+
+    var callFriend = view(0, 0, Trump.NO_TRUMP, points, "SA SK SJ S3 HA H3 CA CK C7 JK",
+        "D2 D4 D6", friend, UnrevealedFriend.INSTANCE, List.of(), List.of());
+    assertEquals(card("CA"), policy.spreadTopContinuation(callFriend).action().card());
+    assertEquals(card("S3"), policy.choose(callFriend).card());
   }
 
   @Test
