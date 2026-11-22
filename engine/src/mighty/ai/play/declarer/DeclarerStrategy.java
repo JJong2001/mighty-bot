@@ -16,13 +16,17 @@ public final class DeclarerStrategy implements RoleStrategy {
 
   public Optional<PlayDecision> spreadTopLead(View view, PlayFacts facts, List<Action> legal) {
     if (view.role() != Role.DECLARER || !view.trick().isEmpty()
-        || (view.contract().points() != 16 && view.contract().points() != 17)
+        || view.contract().points() < 16
         || view.contract().trump() != mighty.model.Trump.NO_TRUMP) {
       return Optional.empty();
     }
     var position = new DeclarerPosition(view, facts, legal);
     if (HighNoTrumpPlay.leadToBidder(position).isPresent()) {
       return Optional.empty();
+    }
+    var support = HighNoTrumpPlay.prepareExtraWinner(position);
+    if (support.isPresent() || view.contract().points() > 17) {
+      return support;
     }
     return NoTrumpOperations.cashSideTopsBeforeFriend(position);
   }

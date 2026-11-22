@@ -19,6 +19,10 @@ final class NoTrumpReturn {
   static Optional<PlayDecision> choose(View view, PlayFacts facts, List<Action> ordinary) {
     var history = view.context().history();
     int points = view.contract().points();
+    var extra = extraWinnerBeforeReturn(view, facts, ordinary);
+    if (extra.isPresent()) {
+      return extra;
+    }
     if (view.contract().trump() == Trump.NO_TRUMP && points >= 17 && points < 20
         && !history.isEmpty() && view.friendSelection() instanceof CardFriend selection
         && selection.card() instanceof StandardCard called) {
@@ -115,6 +119,67 @@ final class NoTrumpReturn {
       }
     }
     return Optional.empty();
+  }
+
+  private static Optional<PlayDecision> extraWinnerBeforeReturn(View view, PlayFacts facts,
+      List<Action> ordinary) {
+    var history = view.context().history();
+    if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() < 17
+        || history.isEmpty() || !(view.friendSelection() instanceof CardFriend friend)) {
+      return Optional.empty();
+    }
+    var declarer = view.context().declarer();
+    var requested = PlaySupport.announcedReturnSuit(view);
+    if (requested.isEmpty()) {
+      return Optional.empty();
+    }
+    // 주공이 먼저 탑을 사용하고 지정 카드로 선을 건넨 직후의 한 구만 연장합니다.
+    int handoff = history.size() - 1;
+    while (handoff > 0 && history.get(handoff).leader().equals(view.self())
+        && history.get(handoff).winner().equals(view.self())) {
+      handoff--;
+    }
+    var transfer = history.get(handoff);
+    if (!transfer.leader().equals(declarer) || !transfer.winner().equals(view.self())
+        || transfer.cards().stream().noneMatch(p -> p.seat().equals(view.self())
+            && p.action().card().equals(friend.card()))) {
+      return Optional.empty();
+    }
+    var prepared = EnumSet.noneOf(Suit.class);
+    for (int i = handoff - 1; i >= 0; i--) {
+      var trick = history.get(i);
+      if (!trick.leader().equals(declarer) || !trick.winner().equals(declarer)
+          || !(trick.cards().get(0).action().card() instanceof StandardCard card)
+          || card.equals(mighty.game.rule.Rules.mighty(Trump.NO_TRUMP))) {
+        break;
+      }
+      prepared.add(card.suit());
+    }
+    // 초구부터 물패로 마이티를 찾았다면 이미 가진 독립 탑으로도 같은 지원이 가능합니다.
+    boolean directMighty = friend.card().equals(mighty.game.rule.Rules.mighty(Trump.NO_TRUMP))
+        && transfer.cards().get(0).action().card().points() == 0;
+    if ((prepared.isEmpty() || (prepared.size() == 1 && prepared.contains(requested.get())))
+        && !directMighty) {
+      return Optional.empty();
+    }
+    if (handoff == history.size() - 1) {
+      var tops = ordinary.stream().filter(a -> {
+        var suit = ((StandardCard) a.card()).suit();
+        return suit != requested.get() && facts.isSuitTop(a.card())
+            && (!facts.cards().outsideCards().contains(Joker.INSTANCE)
+                || view.context().playOrder().seats().stream().filter(s -> !facts.teams().isAlly(s))
+                    .noneMatch(s -> facts.cards().isVoid(s, suit)));
+      }).toList();
+      if (!tops.isEmpty()) {
+        var preferred = tops.stream().filter(a -> {
+          var suit = ((StandardCard) a.card()).suit();
+          return prepared.contains(suit) || facts.cards().isVoid(declarer, suit);
+        }).toList();
+        return Optional.of(new PlayDecision(PlaySupport.highest(preferred.isEmpty() ? tops : preferred),
+            "승격된 탑이나 독립 탑으로 한 구 더 받아 주공이 약한 패를 버릴 기회를 줍니다."));
+      }
+    }
+    return returning(ordinary, requested.get());
   }
 
   private static Optional<PlayDecision> returning(List<Action> legal, Suit suit) {

@@ -139,7 +139,7 @@ final class HonorGambleTrial {
       return usual;
     }
     return new PlayDecision(top.action(), String.format(
-        "%s 같은 가상 배분 %d개에서 탑카 우선 %d회, 기존 운영 %d회 공약 성공.",
+        "%s 같은 가상 배분 %d개에서 이 운영 %d회, 기존 운영 %d회 공약 성공.",
         top.reason(), samples, topWins, usualWins));
   }
 

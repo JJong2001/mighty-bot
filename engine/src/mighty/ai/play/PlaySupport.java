@@ -3,6 +3,9 @@ package mighty.ai.play;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
+import mighty.game.bidding.BidOffer;
+import mighty.game.bidding.PublicContractHistory;
 import mighty.game.action.Action;
 import mighty.game.action.JokerLead;
 import mighty.game.action.StandardPlay;
@@ -90,4 +93,23 @@ public final class PlaySupport {
         .orElseThrow();
   }
 
+  /** 주공 본인의 낙찰 후 선언을 먼저 보고, 없으면 경매에서 마지막으로 부른 문양을 읽습니다. */
+  public static Optional<Suit> announcedReturnSuit(View view) {
+    var announced = PublicContractHistory.latestSuit(view.context().contractHistory());
+    if (announced.isPresent()) {
+      return announced;
+    }
+    var bids = view.context().auction();
+    for (int i = bids.size() - 1; i >= 0; i--) {
+      var entry = bids.get(i);
+      if (entry.seat().equals(view.context().declarer())
+          && entry.action() instanceof BidOffer offer) {
+        var suit = PublicContractHistory.suitOf(offer.bid().trump());
+        if (suit.isPresent()) {
+          return suit;
+        }
+      }
+    }
+    return Optional.empty();
+  }
 }

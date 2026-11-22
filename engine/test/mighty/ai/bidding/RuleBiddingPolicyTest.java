@@ -169,8 +169,9 @@ class RuleBiddingPolicyTest {
     // 같은 패로 맞기루를 부르면 선입찰자가 야당인 배분에서 성공률과 내 정산점이 더 낮습니다.
     assertTrue((long) enemy.successes * ally.deals < (long) ally.successes * enemy.deals);
     assertTrue((long) enemy.settlement * ally.deals < (long) ally.settlement * enemy.deals);
-    assertTrue(comparison.estimates().get(BidPass.INSTANCE).total() > outcome.total());
-    assertEquals(BidPass.INSTANCE, comparison.choice());
+    // 바닥에 따라 풀노로 전환할 수 있는 이 패는 패스보다 17클로버의 예상 정산점이 높습니다.
+    assertTrue(outcome.total() > comparison.estimates().get(BidPass.INSTANCE).total());
+    assertEquals(counter, comparison.choice());
     assertEquals(comparison.choice(), new RuleBiddingPolicy().choose(view));
   }
 
