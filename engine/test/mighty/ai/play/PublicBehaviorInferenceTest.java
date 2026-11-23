@@ -101,6 +101,33 @@ class PublicBehaviorInferenceTest {
   }
 
   @Test
+  void oppositionFeedsAgainstFriendOnlyWhenAnInferredJokerHolderIsBehind() {
+    var history = List.of(
+        row(1, Trump.HEART, p(0, "SA"), p(1, "S7"), p(2, "S8"), p(3, "S9"), p(4, "SK")),
+        row(2, Trump.HEART, p(0, "C5"), p(1, "CA"), p(2, "C7"), p(3, "C8"), p(4, "C9")),
+        row(3, Trump.HEART, p(1, "H2"), p(2, "HA"), p(3, "H9"), p(4, "H10"), p(0, "H6")),
+        row(4, Trump.HEART, p(2, "D2"), p(3, "D3"), p(4, "D4"), p(0, "D5"), p(1, "DA")));
+    var friend = new Seat(1);
+    var selection = new CardFriend(card("CA"));
+    var revealed = new RevealedFriend(friend);
+    String own = "D10 DJ DQ S2 S3 S4";
+
+    var early = view(2, 0, Trump.HEART, 16, own, "", selection, revealed, history, List.of(p(1, "HK")));
+    var facts = new PlayFacts(early);
+    assertEquals(friend, facts.currentWinner().orElseThrow().seat());
+    assertTrue(facts.joker().likelyAt(Set.of(new Seat(3), new Seat(4))));
+    assertEquals(card("D10"), policy.choose(early).card());
+    assertTrue(policy.recommend(early).reason().contains("뒤 야당이 조커로"));
+
+    var late = view(4, 0, Trump.HEART, 16, own, "", selection, revealed, history,
+        List.of(p(1, "HK"), p(2, "S5"), p(3, "S6")));
+    var lateFacts = new PlayFacts(late);
+    assertTrue(lateFacts.joker().likelyHeldByOpposition());
+    assertEquals(List.of(new Seat(0)), lateFacts.remainingSeats());
+    assertEquals(0, policy.choose(late).card().points());
+  }
+
+  @Test
   void operatingSideTopSurvivesWhileDeclarerStillHasSideCardsToPlay() {
     String owned = "CA D2 D3 H2 H3";
     var current = List.of(p(0, "SA"));

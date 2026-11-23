@@ -17,6 +17,38 @@ import org.junit.jupiter.params.provider.*;
 
 class PreparationFeedbackTest {
 
+  @ParameterizedTest
+  @CsvSource({
+      "SA S3 S4 S6 SJ DA DK C6 CK H2 H4 H6 H8, C6 CK SJ, C6 CK DA",
+      "SA H3 H4 H6 HJ CA CK D6 DK S2 S4 S5 S8, D6 DK HJ, D6 DK CA",
+      "SA S2 S3 S4 SJ DA DK C6 CK H2 H4 H6 H8, C6 CK SJ, C6 CK DK"
+  })
+  void preservesEstablishedTopsOverBlockedOrMerelyConnectedSide(
+      String seen, String keepTops, String keepLength) {
+    var own = cards(seen);
+    var safeDiscard = cards(keepTops);
+    var riskDiscard = cards(keepLength);
+    var safe = new ArrayList<>(own);
+    safe.removeAll(safeDiscard);
+    var risk = new ArrayList<>(own);
+    risk.removeAll(riskDiscard);
+    var evaluator = new RetainedHandEvaluator();
+    var established = evaluator.assess(safe, safeDiscard, Trump.NO_TRUMP);
+    var blocked = evaluator.assess(risk, riskDiscard, Trump.NO_TRUMP);
+    assertEquals(0, blocked.development());
+    assertTrue(established.topCards() > blocked.topCards());
+    assertTrue(established.score() > blocked.score());
+  }
+
+  @Test
+  void creditsDevelopmentWhenJokerAndSeparateRecoveryCanPromoteTheSide() {
+    var hand = cards("JK DA DK CQ CK C4 H2 H4 S3 S5");
+    var buried = cards("D2 D3 H8");
+    var assessment = new RetainedHandEvaluator().assess(hand, buried, Trump.NO_TRUMP);
+    assertEquals(2, assessment.topCards());
+    assertEquals(2, assessment.development());
+  }
+
   @Test
   void buriesIsolatedSidePointWithoutSpendingRecoveryAce() {
     var view = new DiscardView(new Seat(0), new Bid(16, Trump.DIAMOND),
@@ -137,13 +169,12 @@ class PreparationFeedbackTest {
   }
 
   @Test
-  @DisplayName("기루 여섯 장의 숫자보다 KQ 연결을 점수 묻기로 파괴하지 않는다")
-  void keepsKingQueenConnection() {
+  @DisplayName("16하트에서 막힌 클로버 KQ보다 선을 회수할 다이아 AK를 남긴다")
+  void keepsDiamondRecoveryTopsOverBlockedClubHonors() {
     var view = new DiscardView(new Seat(0), new Bid(16, Trump.HEART),
         cards("H5 H7 H8 H10 HJ HQ DA DK C4 C6 CQ CK JK"));
     var discarded = new RuleDiscardPolicy().choose(view);
-    assertFalse(discarded.contains(CardParser.parse("CK")));
-    assertFalse(discarded.contains(CardParser.parse("CQ")));
+    assertEquals(Set.copyOf(cards("C4 CQ CK")), Set.copyOf(discarded));
   }
 
   @Test

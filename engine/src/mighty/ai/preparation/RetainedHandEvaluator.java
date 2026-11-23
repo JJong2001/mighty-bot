@@ -1,16 +1,25 @@
 package mighty.ai.preparation;
 
+import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import mighty.ai.analysis.HoldingControl;
+import mighty.ai.bidding.BiddingHand;
 import mighty.ai.planning.NoTrumpPlan;
 import mighty.ai.planning.NoTrumpPlanner;
-import mighty.ai.bidding.BiddingHand;
+import mighty.ai.planning.SuitFriendPlan;
+import mighty.game.friend.CardFriend;
+import mighty.game.rule.Rules;
 import mighty.model.*;
 
 /**
  * 남길 패의 기루 장수, 사이드 회수와 상위 연결을 평가합니다. 묻는 점수는 부차적입니다.
  */
 public final class RetainedHandEvaluator {
+
+  static final int TOP_RUN_VALUE = 12;
 
   /**
    * 동점에서는 프렌드가 버림패를 몰라도 알아볼 수 있는 일반 탑을 남깁니다.
@@ -30,25 +39,53 @@ public final class RetainedHandEvaluator {
   }
 
   public double score(List<Card> kept, List<Card> discarded, Trump trump) {
+    return assess(kept, discarded, trump).score();
+  }
+
+  record Assessment(double score, int topCards, int development, int trumps, boolean mighty,
+                    boolean joker, boolean hasNoTrumpPlan) {
+
+    boolean sameControls(Assessment other) {
+      return trumps == other.trumps && mighty == other.mighty && joker == other.joker
+          && hasNoTrumpPlan == other.hasNoTrumpPlan;
+    }
+  }
+
+  Assessment assess(List<Card> kept, List<Card> discarded, Trump trump) {
     BiddingHand hand = BiddingHand.from(kept);
     Optional<NoTrumpPlan> noTrump = trump == Trump.NO_TRUMP
         ? Optional.of(NoTrumpPlanner.analyze(hand, discarded)) : Optional.empty();
-    double score = (hand.hasMighty(trump) ? 1000 : 0) + (hand.hasJoker() ? 900 : 0)
-        + hand.trumpCount(trump) * 30;
+    Map<Suit, HoldingControl> controls = new EnumMap<>(Suit.class);
+    for (Suit suit : Suit.values()) {
+      controls.put(suit, HoldingControl.analyze(kept, discarded, trump, suit));
+    }
+    var sideFriend = SuitFriendPlan.choose(hand, discarded, trump);
+    int trumps = hand.trumpCount(trump);
+    boolean mighty = hand.hasMighty(trump);
+    boolean joker = hand.hasJoker();
+    boolean hasNoTrumpPlan = noTrump.filter(NoTrumpPlan::available).isPresent();
+    int topCards = 0;
+    int development = 0;
+    double score = (mighty ? 1000 : 0) + (joker ? 900 : 0) + trumps * 30;
     if (trump == Trump.NO_TRUMP) {
-      int mainLength = java.util.Arrays.stream(Suit.values()).mapToInt(s -> hand.holding(s).size())
-          .max().orElse(0);
-      score += mainLength * 20;
+      // 주력의 현재 탑과 운영으로 살릴 수 있는 나머지 장수의 값을 구분합니다.
+      int mainRun = controls.values().stream().mapToInt(HoldingControl::topRun).max().orElse(0);
+      score += mainRun * 20;
+      if (hasNoTrumpPlan && noTrump.orElseThrow().jokerBreaks() <= 1) {
+        var primary = controls.get(noTrump.orElseThrow().primary());
+        score += primary.topRun() > 0 ? (primary.length() - primary.topRun()) * 6 : 0;
+      }
       // 노기루 후보의 버리기 자체도 같은 운영 가능성 검사를 통과해야 합니다.
-      if (noTrump.filter(NoTrumpPlan::available).isPresent()) {
+      if (hasNoTrumpPlan) {
         score += 120;
       }
     }
     for (Suit suit : Suit.values()) {
       var holding = hand.ordinaryHolding(suit, trump);
-      var control = mighty.ai.analysis.HoldingControl.analyze(kept, discarded, trump, suit);
+      var control = controls.get(suit);
       int run = control.topRun();
-      score += run * 12;
+      topCards += run;
+      score += run * TOP_RUN_VALUE;
       if (trump.matches(suit)) {
         score += holding.ranks().stream().filter(r -> r.value() >= Rank.TEN.value()).count() * 3;
         continue;
@@ -70,6 +107,11 @@ public final class RetainedHandEvaluator {
         long cover = holding.size() - points;
         // 막힌 점수만 남기면 상대 상위에 강제로 따라내게 됩니다.
         score -= Math.min(points, Math.max(0, control.blockers() - cover)) * 10;
+        if (trump != Trump.NO_TRUMP && points > 0 && cover >= control.blockers()
+            && control.blockers() <= 2) {
+          // 상대 상위를 따를 물패가 있으면 사이드 점수 보호를 평가합니다. 승리 장수로 세지는 않습니다.
+          score += 6;
+        }
       }
       int water = holding.size() - run;
       boolean primaryRun = noTrump.filter(plan -> plan.available() && plan.primary() == suit)
@@ -80,12 +122,21 @@ public final class RetainedHandEvaluator {
       if (holding.size() == 0 && trump != Trump.NO_TRUMP) {
         score += 15;
       }
-      if (run == 0 && !holding.ranks().isEmpty()) {
-        // 단독 물패의 비용은 water에 이미 포함됩니다. 별도 벌점으로 긴 사이드를 자르지 않습니다.
-        if (control.connected() > 1) {
-          score += control.connected() * 5 + control.possibleWinners() * 12;
-        } else if (control.length() >= 3) {
-          score += control.possibleWinners() * 7;
+      if (run == 0 && control.blockers() > 0 && control.connected() >= 2) {
+        boolean sideEntry = mighty || Arrays.stream(Suit.values())
+            .anyMatch(other -> other != suit && controls.get(other).topRun() > 0);
+        boolean friendRemovesBlocker = noTrump.filter(NoTrumpPlan::available)
+            .map(NoTrumpPlan::friend)
+            .filter(card -> card instanceof StandardCard target && target.suit() == suit
+                && !target.equals(Rules.mighty(trump))
+                && target.rank().value() > holding.ranks().get(0).value())
+            .isPresent() || sideFriend.filter(plan -> plan.openingSuit() == suit
+                && plan.selection() instanceof CardFriend).isPresent();
+        // 장벽을 뺄 수단, 남은 연결, 별도의 회수 수단이 모두 있는 경우에만 조건부 가치를 줍니다.
+        int removalOptions = (joker ? 1 : 0) + (friendRemovesBlocker ? 1 : 0);
+        if (sideEntry && control.blockers() <= removalOptions) {
+          development += control.connected();
+          score += control.connected() * 6;
         }
       }
     }
@@ -93,7 +144,8 @@ public final class RetainedHandEvaluator {
     if (hand.hasGun(trump)) {
       score += trump == Trump.NO_TRUMP ? 16 : 1;
     }
-    return score + discarded.stream().mapToInt(Card::points).sum();
+    return new Assessment(score + discarded.stream().mapToInt(Card::points).sum(),
+        topCards, development, trumps, mighty, joker, hasNoTrumpPlan);
   }
 
   /**

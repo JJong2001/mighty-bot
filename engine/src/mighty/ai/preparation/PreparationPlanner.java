@@ -323,7 +323,13 @@ public final class PreparationPlanner {
       }
       var candidate = prepare(context, suited, bid);
       double score = expectedScores.expectedPreparedScore(context.current(), seen, candidate);
-      if (score > bestScore) {
+      // 작은 표본에서 근소한 차이로 공약을 바꾸지 않도록 같은 배분을 더 비교합니다.
+      double difference = score - bestScore;
+      if (Math.abs(difference) <= 4) {
+        difference = expectedScores.confirmedPreparedScore(context.current(), seen, candidate)
+            - expectedScores.confirmedPreparedScore(context.current(), seen, best);
+      }
+      if (difference > 0) {
         best = candidate;
         bestScore = score;
       }

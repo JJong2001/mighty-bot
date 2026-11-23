@@ -44,7 +44,11 @@ final class OppositionJokerPressure {
             "조커로 여당의 최고 기루를 잡아 앞의 점수를 확보하고 뒤 야당의 지원을 받습니다."));
       }
     }
-    if (!winner.seat().equals(view.context().declarer()) || mightyOutside
+    // 프렌드가 잡은 점수 구에는 조커 후보가 아직 낼 차례가 남았다는 근거가 있을 때만 얹습니다.
+    boolean friendWinningWithJokerBehind = inferredJokerBehind && facts.trickPoints() > 0
+        && facts.teams().friendSeat().filter(winner.seat()::equals).isPresent();
+    if ((!winner.seat().equals(view.context().declarer()) && !friendWinningWithJokerBehind)
+        || mightyOutside
         || !allyBehind || !PlaySupport.ordinary(facts.winningActions(), view).isEmpty()
         || facts.cards().isDesignatedFriendCard(Joker.INSTANCE)
         || !facts.cards().outsideCards().contains(Joker.INSTANCE)
