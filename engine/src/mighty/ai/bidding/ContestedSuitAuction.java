@@ -23,6 +23,9 @@ import mighty.game.TableLayout;
 import mighty.game.bidding.*;
 import mighty.game.deal.DeckFactory;
 import mighty.game.friend.SpecialFriend;
+import mighty.game.friend.CardFriend;
+import mighty.game.friend.FriendSelection;
+import mighty.game.observation.FriendView;
 import mighty.game.observation.BiddingView;
 import mighty.game.round.RoundResult;
 import mighty.game.round.RoundSettlement;
@@ -33,9 +36,16 @@ import mighty.model.Suit;
 import mighty.model.Trump;
 
 /** 공개 입찰을 설명하는 가상 패에서 패스·맞기루·다른 공약의 내 명목 정산점을 짝지어 비교합니다. */
-final class ContestedSuitAuction {
+public final class ContestedSuitAuction {
   private static final int DEALS = 32;
   private static final int DRAW_LIMIT = 64;
+  private static final int FRIEND_DEALS = 8;
+
+  private record FriendComparison(FriendView view, BidderSupportPlan plan, FriendSelection usual) {}
+
+  // 준비 단계와 실제 지정 단계가 동일한 관측을 사용하면 짝지은 대국을 다시 열지 않습니다.
+  private static final Map<FriendComparison, FriendSelection> FRIEND_CACHE =
+      new java.util.concurrent.ConcurrentHashMap<>();
 
   private ContestedSuitAuction() {}
 
@@ -68,7 +78,8 @@ final class ContestedSuitAuction {
           && o.bid().points() < 20).min(Comparator.comparingInt(o -> o.bid().points()))
           .ifPresent(offers::add);
       var eighteen = new BidOffer(new Bid(18, Trump.NO_TRUMP));
-      if (own.hasMighty(Trump.NO_TRUMP) && legal.contains(eighteen)) {
+      if (own.hasMighty(Trump.NO_TRUMP) && legal.contains(eighteen)
+          && (!support.get().callsNextHonor() || bid.points() >= 18)) {
         offers.add(eighteen);
       }
     }
@@ -76,7 +87,8 @@ final class ContestedSuitAuction {
       return Optional.empty();
     }
     var signal = defense ? standing : support.orElseThrow().signal();
-    return Optional.of(evaluate(view, signal, List.copyOf(offers), true));
+    return Optional.of(evaluate(view, signal, List.copyOf(offers), true,
+        support.filter(p -> p.signal().equals(signal) && p.callsNextHonor())));
   }
 
   static Optional<PublicBid> signal(BiddingView view, BiddingHand own, List<BidOffer> candidates) {
@@ -144,11 +156,11 @@ final class ContestedSuitAuction {
   record Comparison(BiddingAction choice, Map<BiddingAction, Estimate> estimates) {}
 
   static Comparison evaluate(BiddingView view, PublicBid signal, List<BidOffer> alternatives) {
-    return evaluate(view, signal, alternatives, false);
+    return evaluate(view, signal, alternatives, false, Optional.empty());
   }
 
   private static Comparison evaluate(BiddingView view, PublicBid signal, List<BidOffer> alternatives,
-      boolean inferControls) {
+      boolean inferControls, Optional<BidderSupportPlan> nextHonor) {
     var seats = view.bidding().participants().seats();
     var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, seats), Set.copyOf(seats));
     var unseen = DeckFactory.create().stream().filter(c -> !view.hand().contains(c)).toList();
@@ -159,17 +171,8 @@ final class ContestedSuitAuction {
     var standing = view.bidding().highestBid().orElseThrow();
     var service = RoundService.strategic();
     for (int sample = 0; sample < DEALS; sample++) {
-      var pool = draw(unseen, ((BidOffer) signal.action()).bid(), random, inferControls);
-      var hands = new HashMap<Seat, List<Card>>();
-      hands.put(view.self(), view.hand());
-      hands.put(signal.seat(), pool.subList(0, 10));
-      int offset = 10;
-      for (Seat seat : seats) {
-        if (!hands.containsKey(seat)) {
-          hands.put(seat, pool.subList(offset, offset + 10));
-          offset += 10;
-        }
-      }
+      var pool = draw(unseen, ((BidOffer) signal.action()).bid(), random, inferControls, nextHonor);
+      var hands = dealHands(seats, view.self(), view.hand(), signal.seat(), pool);
       for (var entry : results.entrySet()) {
         var action = entry.getKey();
         var award = action instanceof BidOffer offer ? new PublicBid(view.self(), offer) : standing;
@@ -207,11 +210,82 @@ final class ContestedSuitAuction {
     return best;
   }
 
+  /** 버리기 뒤 동일한 공개 입찰 조건에서 차상위 납치와 기존 프렌드의 내 정산을 비교합니다. */
+  public static FriendSelection preferredFriend(FriendView view, BidderSupportPlan plan,
+      FriendSelection usual) {
+    var called = new CardFriend(plan.called());
+    if (usual.equals(called)) {
+      return usual;
+    }
+    if (FRIEND_CACHE.size() >= 256) {
+      FRIEND_CACHE.clear();
+    }
+    return FRIEND_CACHE.computeIfAbsent(new FriendComparison(view, plan, usual),
+        key -> compareFriends(view, plan, usual, called));
+  }
+
+  private static FriendSelection compareFriends(FriendView view, BidderSupportPlan plan,
+      FriendSelection usual, CardFriend called) {
+    var seen = new ArrayList<>(view.hand());
+    seen.addAll(view.discardedCards());
+    var unseen = DeckFactory.create().stream().filter(c -> !seen.contains(c)).toList();
+    var random = new Random(seen.stream().map(Card::toCode).sorted().toList().hashCode());
+    var seats = new LinkedHashSet<Seat>();
+    view.auction().forEach(b -> seats.add(b.seat()));
+    seats.add(view.self());
+    if (seats.size() > GameMode.PLAYING_PLAYER_COUNT) {
+      // 육마 최초 입찰만으로 제외된 자리를 특정할 수 없습니다.
+      return usual;
+    }
+    // 전체 입찰 이력이면 첫 입찰자부터의 원형 순서가 그대로 복원됩니다.
+    // 일부 자리만 기록한 입력에서는 나머지 가상 자리를 보충합니다.
+    for (int i = 0; seats.size() < GameMode.PLAYING_PLAYER_COUNT; i++) {
+      seats.add(new Seat(i));
+    }
+    var table = List.copyOf(seats);
+    var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, table), seats);
+    var service = RoundService.strategic();
+    int gain = 0;
+    for (int sample = 0; sample < FRIEND_DEALS; sample++) {
+      var pool = draw(unseen, ((BidOffer) plan.signal().action()).bid(), random, true,
+          Optional.of(plan));
+      var hands = dealHands(table, view.self(), view.hand(), plan.signal().seat(), pool);
+      for (var friend : List.of(called, usual)) {
+        // 버리기·프렌드를 고정하고 플레이부터 실행해야 평가 중 준비 결정을 재호출하지 않습니다.
+        var round = RoundState.start(order, new BiddingResult(view.self(), view.contract()),
+            hands, view.discardedCards(), view.auction());
+        round.takeKitty(view.self());
+        round.discard(view.self(), view.discardedCards());
+        round.chooseFriend(view.self(), friend);
+        int net = RoundSettlement.nominal(service.playToEnd(round), friend == SpecialFriend.NONE)
+            .get(view.self());
+        gain += friend.equals(called) ? net : -net;
+      }
+    }
+    return gain > 0 ? called : usual;
+  }
+
+  private static Map<Seat, List<Card>> dealHands(List<Seat> seats, Seat self, List<Card> own,
+      Seat bidder, List<Card> pool) {
+    var hands = new HashMap<Seat, List<Card>>();
+    hands.put(self, own);
+    hands.put(bidder, pool.subList(0, 10));
+    int offset = 10;
+    for (var seat : seats) {
+      if (!hands.containsKey(seat)) {
+        hands.put(seat, pool.subList(offset, offset + 10));
+        offset += 10;
+      }
+    }
+    return hands;
+  }
+
   private static boolean onDeclarerTeam(RoundResult result, Seat seat) {
     return result.declarer().equals(seat) || result.friend().filter(seat::equals).isPresent();
   }
 
-  private static List<Card> draw(List<Card> unseen, Bid signal, Random random, boolean inferControls) {
+  private static List<Card> draw(List<Card> unseen, Bid signal, Random random, boolean inferControls,
+      Optional<BidderSupportPlan> nextHonor) {
     var pool = new ArrayList<>(unseen);
     if (signal.points() < 16) {
       // 낮은 문양 입찰에는 강제 첫 공약도 있으므로 특정 기루 장수나 탑을 전제하지 않습니다.
@@ -240,6 +314,13 @@ final class ContestedSuitAuction {
         strength = 10000 + opening + jokerControl;
       } else {
         strength = assessment.ceilingPoints() * 100 + suit.length() * 10 + suit.pointsAtTop();
+      }
+      if (nextHonor.isPresent()) {
+        // 외부 차상위 한 장만으로 고공약을 설명하지 않습니다. 문양 길이, 상위 연결,
+        // 별도 초구를 함께 본 뒤 가장 가까운 배분을 쓰며 카드 주인을 고정하지 않습니다.
+        var target = nextHonor.get().called();
+        int run = hand.holding(target.suit()).consecutiveFrom(target.rank());
+        strength = strength * 4 + run * 12 + (suit.hasSideOpening() ? 5 : 0);
       }
       if (strength > best) {
         best = strength;

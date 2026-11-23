@@ -30,12 +30,14 @@ final class HighNoTrumpPlay {
     return HighNoTrumpPlan.forContract(hand, bid);
   }
 
-  static Optional<PlayDecision> lead(DeclarerPosition position) {
+  static Optional<PlayDecision> leadToBidder(DeclarerPosition position) {
     var view = position.view();
     if (position.needsFriendCall() && view.contract().trump() == Trump.NO_TRUMP
         && view.contract().points() >= 17 && !view.context().auction().isEmpty()) {
       var bidder = BidderSupportPlan.forContract(BiddingHand.from(NoTrumpOperations.initialCards(position)),
-          view.self(), view.context().auction(), view.contract()).filter(p -> position.calls(p.called()));
+          view.self(), view.context().auction(), view.contract(),
+          ((mighty.game.observation.DeclarerInfo) view.privateInfo()).discardedCards())
+          .filter(p -> position.calls(p.called()));
       if (bidder.isPresent()) {
         var target = bidder.get().transfer();
         var cash = position.ordinary().stream().filter(a -> ((StandardCard) a.card()).suit() != target)
@@ -44,12 +46,95 @@ final class HighNoTrumpPlay {
           return Optional.of(new PlayDecision(PlaySupport.highest(cash),
               "선입찰자에게 선을 넘기기 전에 내 독립 탑을 먼저 처리합니다."));
         }
+        if (bidder.get().callsNextHonor()) {
+          // 상대의 상위패를 프렌드로 부른 경우 그 위에 있는 내 일반 탑부터 현금화합니다.
+          var above = position.inSuit(target).stream().filter(a ->
+              ((StandardCard) a.card()).rank().value() > bidder.get().called().rank().value())
+              .toList();
+          if (!above.isEmpty()) {
+            return Optional.of(new PlayDecision(PlaySupport.highest(above),
+                "프렌드 위의 내 탑을 먼저 쓰고, 남은 물패로 선을 넘깁니다."));
+          }
+        }
         var transfer = low(position.inSuit(target), "선입찰 문양의 물패로 프렌드의 추가 승리를 연결합니다.");
         if (transfer.isPresent()) {
           return transfer;
         }
       }
     }
+    return Optional.empty();
+  }
+
+  /** 한 구 지원이 필요한 고공약에서만 기존 운영과 비교할 선을 제시합니다. */
+  static Optional<PlayDecision> prepareExtraWinner(DeclarerPosition position) {
+    var view = position.view();
+    if (view.contract().points() < 17 || !position.needsFriendCall()) {
+      return Optional.empty();
+    }
+    var primary = PlaySupport.announcedReturnSuit(view).orElse(position.primarySuit());
+    var main = position.inSuit(primary);
+    var facts = position.facts();
+    long mainTops = main.stream().filter(a -> facts.isSuitTop(a.card())).count();
+    boolean recovery = view.hand().contains(Joker.INSTANCE) || view.hand().contains(Rules.mighty(Trump.NO_TRUMP));
+    if (position.initialLength(primary) < 4
+        || (mainTops < 3 && mainTops < main.size()) || (main.isEmpty() && !recovery)) {
+      return Optional.empty();
+    }
+    var side = position.ordinary().stream()
+        .filter(a -> ((StandardCard) a.card()).suit() != primary).toList();
+    var losers = side.stream().filter(a -> !facts.isSuitTop(a.card())).toList();
+    if (losers.size() < 2) {
+      return Optional.empty();
+    }
+    var called = ((CardFriend) view.friendSelection()).card();
+    // 지정 카드가 빠지는 순간 같은 문양의 내 카드가 승격되면 먼저 친구를 찾는 연결을 지킵니다.
+    if (callingPromotesOwnCard(position, called)) {
+      return Optional.empty();
+    }
+    var transfers = losers.stream().filter(a -> called instanceof Joker
+        || called.equals(Rules.mighty(Trump.NO_TRUMP))
+        || ((StandardCard) called).suit() == ((StandardCard) a.card()).suit()).toList();
+    if (transfers.isEmpty()) {
+      return Optional.empty();
+    }
+    // 주력의 반환받을 탑 하나는 남기고, 사이드 탑부터 써서 프렌드 패의 승격을 유도합니다.
+    var cash = side.stream().filter(a -> facts.isSuitTop(a.card())).toList();
+    if (!cash.isEmpty()) {
+      return Optional.of(new PlayDecision(PlaySupport.highest(cash), "사이드 탑을 먼저 써서 프렌드의 추가 승리를 준비합니다."));
+    }
+    // 회수 수단이 별도로 있으면 주력 탑도 먼저 돌리는 경로를 비교합니다.
+    // 낮은 주력이 남을 때에는 반환을 받을 일반 탑 한 장을 보존합니다.
+    if (losers.size() == 2 && view.context().history().stream().noneMatch(trick ->
+        trick.leader().equals(view.self()) && trick.winner().equals(view.self())
+            && trick.cards().get(0).action().card() instanceof StandardCard card
+            && !card.equals(Rules.mighty(Trump.NO_TRUMP)) && card.suit() != primary)) {
+      // 사이드 탑을 먼저 처리한 적이 없으면 단순 주력 순회를 프렌드 호출로 바꾸지 않습니다.
+      return Optional.empty();
+    }
+    if (losers.size() > 2 && (mainTops > 1 || (mainTops == 1 && main.size() == 1 && recovery))) {
+      return Optional.of(new PlayDecision(PlaySupport.highest(main), "남은 주력 탑을 현금화해 추가 지원을 준비합니다."));
+    }
+    if (view.trickNumber().isFirst() && called instanceof Joker) {
+      return Optional.empty();
+    }
+    return Optional.of(new PlayDecision(position.lowSide(transfers), "남은 약한 문양에서 지정 프렌드에게 선을 넘깁니다."));
+  }
+
+  private static boolean callingPromotesOwnCard(DeclarerPosition position, Card called) {
+    var mighty = Rules.mighty(Trump.NO_TRUMP);
+    if (!(called instanceof StandardCard target) || target.equals(mighty)) {
+      return false;
+    }
+    int highestOther = position.facts().cards().outsideCards(target.suit()).stream()
+        .filter(card -> !card.equals(target) && !card.equals(mighty))
+        .mapToInt(card -> card.rank().value()).max().orElse(0);
+    return position.inSuit(target.suit()).stream().map(a -> (StandardCard) a.card())
+        .anyMatch(card -> card.rank().value() < target.rank().value()
+            && card.rank().value() > highestOther);
+  }
+
+  static Optional<PlayDecision> lead(DeclarerPosition position) {
+    var view = position.view();
     var route = route(position);
     if (route.isEmpty() || !(view.friendSelection() instanceof CardFriend friend)) {
       return Optional.empty();

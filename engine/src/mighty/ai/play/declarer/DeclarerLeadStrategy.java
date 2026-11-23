@@ -29,6 +29,16 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> jokers = position.legal().stream().filter(action -> action instanceof JokerLead)
         .toList();
+    var bidder = HighNoTrumpPlay.leadToBidder(position);
+    if (bidder.isPresent()) {
+      return bidder.get();
+    }
+    if (view.contract().points() == 15) {
+      var spread = NoTrumpOperations.cashSideTopsBeforeFriend(position);
+      if (spread.isPresent()) {
+        return spread.get();
+      }
+    }
     if (view.trickNumber().isFirst() && view.contract().trump() == Trump.NO_TRUMP) {
       var plan = NoTrumpOperations.openingPlan(position);
       if (plan.opening().isPresent()) {

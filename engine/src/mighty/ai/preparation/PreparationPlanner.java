@@ -3,6 +3,7 @@ package mighty.ai.preparation;
 import java.util.*;
 import mighty.ai.bidding.*;
 import mighty.ai.planning.HighNoTrumpPlan;
+import mighty.ai.planning.SpreadNoTrumpPlan;
 import mighty.ai.planning.BidderSupportPlan;
 import mighty.game.*;
 import mighty.game.bidding.*;
@@ -81,12 +82,17 @@ public final class PreparationPlanner {
       for (var buried : discard.ranked(view, 286)) {
         var kept = BiddingHand.from(retained(view.hand(), buried));
         var preserved = BidderSupportPlan.forContract(kept, view.self(), view.auction(),
-            view.contract());
+            view.contract(), buried);
         if (preserved.equals(support)) {
           if (HighNoTrumpPlan.find(kept).filter(p -> p.canRun(kept)).isPresent()) {
             break;
           }
-          return plan(view.contract(), buried, new mighty.game.friend.CardFriend(support.get().called()));
+          // 납치용 물패를 살린 뒤 프렌드만 바꾸는 대안도 같은 공약에서 운영할 수 있습니다.
+          var selection = support.get().callsNextHonor()
+              ? friend.choose(new FriendView(view.self(), view.contract(), retained(view.hand(), buried),
+                  buried, history, view.auction()))
+              : new mighty.game.friend.CardFriend(support.get().called());
+          return plan(view.contract(), buried, selection);
         }
       }
     }
@@ -141,7 +147,8 @@ public final class PreparationPlanner {
       return context.current();
     }
     var kept = BiddingHand.from(view.hand());
-    var support = BidderSupportPlan.forContract(kept, view.self(), view.auction(), view.contract());
+    var support = BidderSupportPlan.forContract(kept, view.self(), view.auction(), view.contract(),
+        view.discardedCards());
     if (support.isPresent() && !view.discardedCards().contains(support.get().called())
         && HighNoTrumpPlan.find(kept).filter(p -> p.canRun(kept)).isEmpty()) {
       return view.contract();
@@ -282,6 +289,20 @@ public final class PreparationPlanner {
       }
     }
     var noTrump = bestRetained(noTrumpHands, FIFTEEN_NO_TRUMP);
+    if (fixedDiscards.isEmpty()) {
+      // 상위 여덟 개 버리기에 들지 않아도, 탑이 없는 물패 문양을 통째로 비우는 운영을 봅니다.
+      for (Suit suit : Suit.values()) {
+        List<Card> buried = seen.stream()
+            .filter(card -> card instanceof StandardCard c && c.suit() == suit).toList();
+        if (buried.size() == 3 && buried.stream().allMatch(card -> card.points() == 0)) {
+          var kept = retained(seen, buried);
+          if (SpreadNoTrumpPlan.available(BiddingHand.from(kept))) {
+            noTrump = evaluate(kept, buried);
+            break;
+          }
+        }
+      }
+    }
     PreparationPlan best = prepare(context, noTrump, FIFTEEN_NO_TRUMP);
     double bestScore = Double.NEGATIVE_INFINITY;
     for (Trump trump : Trump.values()) {

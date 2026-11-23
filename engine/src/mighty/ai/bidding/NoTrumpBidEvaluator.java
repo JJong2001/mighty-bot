@@ -3,6 +3,7 @@ package mighty.ai.bidding;
 import java.util.*;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.NoTrumpPlanner;
+import mighty.ai.planning.SpreadNoTrumpPlan;
 import mighty.ai.planning.distribution.NoTrumpDistributionEvaluator;
 import mighty.model.*;
 
@@ -15,6 +16,18 @@ final class NoTrumpBidEvaluator {
   }
 
   static BidAssessment assess(CandidateResources resources, Collection<? extends Card> excluded) {
+    var usual = assessControl(resources, excluded);
+    if (!excluded.isEmpty() || usual.ceilingPoints() >= 17
+        || !SpreadNoTrumpPlan.available(resources.hand())) {
+      return usual;
+    }
+    int opening = usual.canCompete() ? Math.max(15, usual.openingPoints()) : 15;
+    return new BidAssessment(Trump.NO_TRUMP, true, opening, 17, 185, List.of(
+        "세 문양에 일반 탑이 있고 마이티와 조커로 선을 회수할 수 있어 바닥 전에는 곱노까지 경쟁합니다."));
+  }
+
+  private static BidAssessment assessControl(CandidateResources resources,
+      Collection<? extends Card> excluded) {
     var hand = resources.hand();
     if (excluded.isEmpty() && Arrays.stream(Suit.values()).mapToInt(s -> hand.holding(s).size())
         .sum() + (hand.hasJoker() ? 1 : 0) == 10) {
@@ -56,6 +69,11 @@ final class NoTrumpBidEvaluator {
               soloCeiling * 10 + 25, List.of("자력 노기루 운영을 가상 배분에서 평가했습니다."));
         }
       }
+      if (excluded.isEmpty() && ceiling == 16
+          && NoTrumpDistributionEvaluator.canChallengeSeventeen(hand, support)) {
+        return new BidAssessment(resources.trump(), true, 16, 17, 185, List.of(
+            "자력 주력과 프렌드의 별도 지원으로 곱노도 도전 후보에 올려 엿노와 비교합니다."), true);
+      }
       if (ceiling > 0) {
         return new BidAssessment(resources.trump(), true, ceiling, ceiling, ceiling * 10 + 25,
             List.of(
@@ -68,7 +86,7 @@ final class NoTrumpBidEvaluator {
       }
     }
     if (FlexibleNoTrumpOpening.available(hand)) {
-      return FlexibleNoTrumpOpening.assess(hand);
+      return FlexibleNoTrumpOpening.assess(hand, excluded.isEmpty());
     }
     if (ownMighty && resources.length() >= 5
         && hand.ordinaryTopRunLength(resources.primary(), resources.trump()) > 0) {

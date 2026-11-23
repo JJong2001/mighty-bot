@@ -15,6 +15,10 @@ import org.junit.jupiter.api.*;
 class SettingProofTest {
 
   private static RoundState round(boolean joker, boolean friend) {
+    return round(joker, friend ? new CardFriend(CardParser.parse("HQ")) : SpecialFriend.NONE);
+  }
+
+  private static RoundState round(boolean joker, FriendSelection friend) {
     var seats = IntStream.range(0, 5).mapToObj(Seat::new).toList();
     var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, seats), new HashSet<>(seats));
     var own = CardParser.parseList(
@@ -32,8 +36,7 @@ class SettingProofTest {
         hands, buried);
     round.takeKitty(new Seat(0));
     round.discard(new Seat(0), buried);
-    round.chooseFriend(new Seat(0),
-        friend ? new CardFriend(CardParser.parse("HQ")) : SpecialFriend.NONE);
+    round.chooseFriend(new Seat(0), friend);
     return round;
   }
 
@@ -68,6 +71,21 @@ class SettingProofTest {
     round.declareSetting(new Seat(0));
     assertTrue(round.result().orElseThrow().friend().isPresent());
     assertEquals(20, round.result().orElseThrow().teamPoints());
+  }
+
+  @Test
+  void keepsTheRevealedCardFriendAtSettlement() {
+    var called = CardParser.parse("S2");
+    var round = round(false, new CardFriend(called));
+    for (int i = 0; i < 5; i++) {
+      var view = round.currentView();
+      var legal = new mighty.ai.play.PlayFacts(view).legalActions();
+      var action = legal.stream().filter(a -> a.card().equals(called)).findFirst().orElse(legal.get(0));
+      round.play(new mighty.game.trick.PublicPlay(view.self(), action));
+    }
+    var friend = assertInstanceOf(RevealedFriend.class, round.publicFriendStatus());
+    round.declareSetting(new Seat(0));
+    assertEquals(Optional.of(friend.seat()), round.result().orElseThrow().friend());
   }
 
 }
