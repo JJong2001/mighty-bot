@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.IntStream;
 import mighty.ai.planning.BidderSupportPlan;
+import mighty.ai.planning.NoTrumpPlanner;
+import mighty.ai.planning.distribution.NoTrumpDistributionEvaluator;
 import mighty.ai.preparation.PreparationPlanner;
 import mighty.ai.preparation.RuleFriendPolicy;
 import mighty.data.CardParser;
@@ -25,6 +27,26 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class RuleBiddingPolicyTest {
+
+  @Test
+  void comparesSeventeenNoTrumpWithSolidMainAndSeparateJokerFriendWin() {
+    var own = CardParser.parseList("S2 SJ SA DJ DQ DK DA CA CQ H10");
+    var hand = BiddingHand.from(own);
+    var support = NoTrumpDistributionEvaluator.bestSupport(hand, List.of());
+    assertEquals(Joker.INSTANCE, support.friend());
+    assertFalse(NoTrumpPlanner.splitControl(hand, support.friend()));
+    assertEquals(16, NoTrumpDistributionEvaluator.qualifyingContract(hand, support));
+    assertTrue(NoTrumpDistributionEvaluator.canChallengeSeventeen(hand, support));
+
+    var expected = new BidOffer(new Bid(16, Trump.NO_TRUMP));
+    var policy = new RuleBiddingPolicy();
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(0), own, 40, state())));
+    var previous = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB))));
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(1), own, 40, previous)));
+    var higher = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(17, Trump.HEART))));
+    assertEquals(new BidOffer(new Bid(17, Trump.NO_TRUMP)),
+        policy.choose(new BiddingView(new Seat(1), own, 40, higher)));
+  }
 
   @ParameterizedTest
   @CsvSource({

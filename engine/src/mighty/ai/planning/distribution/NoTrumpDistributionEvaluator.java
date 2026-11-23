@@ -145,11 +145,36 @@ public final class NoTrumpDistributionEvaluator {
     if (distribution.seventeenRate() >= 0.70) {
       return 17;
     }
-    if (mighty.ai.planning.NoTrumpPlanner.splitControl(hand, support.friend())
-        && distribution.sixteenRate() >= 0.65 && distribution.meanPoints() >= 16) {
+    if (distribution.sixteenRate() >= 0.65 && distribution.meanPoints() >= 16
+        && (mighty.ai.planning.NoTrumpPlanner.splitControl(hand, support.friend())
+            || hasIndependentFriendTrick(hand, support.friend()))) {
       return 16;
     }
     return 0;
+  }
+
+  /** 자력 주력과 별도 프렌드 한 구로 곱노를 도전 후보에 넣되, 입찰에서 손익을 비교합니다. */
+  public static boolean canChallengeSeventeen(BiddingHand hand, Support support) {
+    return support.distribution().seventeenRate() >= 0.50
+        && hasIndependentFriendTrick(hand, support.friend());
+  }
+
+  private static boolean hasIndependentFriendTrick(BiddingHand hand, Card friend) {
+    var mightyCard = mighty.game.rule.Rules.mighty(Trump.NO_TRUMP);
+    boolean complementarySpecial = friend instanceof Joker && hand.hasMighty(Trump.NO_TRUMP)
+        && !hand.hasJoker() || friend.equals(mightyCard) && hand.hasJoker()
+        && !hand.hasMighty(Trump.NO_TRUMP);
+    if (!complementarySpecial) {
+      return false;
+    }
+    // 주공이 연속 탑으로 주력을 끝까지 돌리고, 다른 문양에서도 일반 카드로 선을 잡습니다.
+    // 지정 특수카드는 주력의 빈 서열을 메우는 대신 별도 승리에 쓸 수 있습니다.
+    return Arrays.stream(Suit.values()).anyMatch(main -> {
+      int run = hand.ordinaryTopRunLength(main, Trump.NO_TRUMP);
+      return run >= 4 && run == hand.ordinaryHolding(main, Trump.NO_TRUMP).size()
+          && Arrays.stream(Suit.values()).anyMatch(other -> other != main
+              && hand.ordinaryTopRunLength(other, Trump.NO_TRUMP) > 0);
+    });
   }
 
   private static int winsAt(NoTrumpDistribution distribution, int points) {

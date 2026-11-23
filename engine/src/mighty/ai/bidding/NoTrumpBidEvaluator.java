@@ -69,6 +69,11 @@ final class NoTrumpBidEvaluator {
               soloCeiling * 10 + 25, List.of("자력 노기루 운영을 가상 배분에서 평가했습니다."));
         }
       }
+      if (excluded.isEmpty() && ceiling == 16
+          && NoTrumpDistributionEvaluator.canChallengeSeventeen(hand, support)) {
+        return new BidAssessment(resources.trump(), true, 16, 17, 185, List.of(
+            "자력 주력과 프렌드의 별도 지원으로 곱노도 도전 후보에 올려 엿노와 비교합니다."), true);
+      }
       if (ceiling > 0) {
         return new BidAssessment(resources.trump(), true, ceiling, ceiling, ceiling * 10 + 25,
             List.of(

@@ -4,6 +4,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 import mighty.ai.bidding.BidExpectedScoreEvaluator.ScoreSamples;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.SpreadNoTrumpPlan;
@@ -62,7 +63,7 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
     var contenders = evaluator.assess(hand).stream().filter(BidAssessment::canCompete)
-        .flatMap(a -> candidate(a, legal).stream()).toList();
+        .flatMap(a -> candidates(a, legal)).toList();
     var alternatives = contenders.stream().map(Candidate::offer).toList();
     var special = ContestedSuitAuction.specialCompetition(view, hand, legal, alternatives);
     if (special.isPresent()) {
@@ -135,6 +136,20 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
         .map(finalist -> new ScoredCandidate(finalist.candidate(),
             expectedScores.expandedBiddingSamples(hand, finalist.offer().bid())))
         .max(SCORE_ORDER).orElseThrow().offer();
+  }
+
+  private static Stream<Candidate> candidates(BidAssessment assessment, List<BidOffer> legal) {
+    var first = candidate(assessment, legal);
+    // 곱노를 도전 후보로 표시한 엿노 패에 한해, 같은 문양 안에서도 두 공약의 손익을 비교합니다.
+    if (assessment.trump() == Trump.NO_TRUMP && assessment.compareWithSuitedBids()
+        && assessment.openingPoints() == 16 && assessment.ceilingPoints() == 17
+        && first.filter(candidate -> candidate.offer().bid().points() == 16).isPresent()) {
+      var challenge = new BidOffer(new Bid(17, Trump.NO_TRUMP));
+      if (legal.contains(challenge)) {
+        return Stream.concat(first.stream(), Stream.of(new Candidate(challenge, assessment)));
+      }
+    }
+    return first.stream();
   }
 
   private static Optional<Candidate> candidate(BidAssessment assessment, List<BidOffer> legal) {
