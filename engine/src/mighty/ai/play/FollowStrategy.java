@@ -92,7 +92,8 @@ public final class FollowStrategy {
    */
   public static Optional<PlayDecision> protectAlly(View view, PlayFacts facts, List<Action> legal) {
     var winner = facts.currentWinner().orElseThrow();
-    if (!facts.allyWinning()) {
+    if (!facts.allyWinning() && !(facts.teams().isLikelyAlly(winner.seat())
+        && facts.isSuitTop(winner.action().card()))) {
       return Optional.empty();
     }
     boolean allyRuff = facts.allyRuffWinning();
@@ -133,7 +134,8 @@ public final class FollowStrategy {
         || facts.isSuitTop(facts.currentWinner().orElseThrow().action().card()))) {
       CardResources resources = new CardResources(view, facts);
       List<Action> points = actions.stream().filter(action -> action.card().points() > 0
-          && !resources.reserved(action.card())).toList();
+              && !resources.reserved(action.card()) && PointExposurePlan.allows(view, facts, action))
+          .toList();
       if (!points.isEmpty()) {
         return new PlayDecision(points.stream().min(Comparator.<Action>comparingInt(action ->
             supportPriority(action, view, facts))).orElseThrow(),

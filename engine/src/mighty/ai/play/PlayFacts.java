@@ -22,6 +22,8 @@ public final class PlayFacts {
   private final View view;
   private final CardKnowledge cards;
   private final TeamKnowledge teams;
+  private final PublicBehaviorInference behavior;
+  private final JokerBelief joker;
   private final List<Action> legal;
   private final Optional<TrickConditions> conditions;
   private final Optional<PublicPlay> winner;
@@ -33,7 +35,9 @@ public final class PlayFacts {
   public PlayFacts(View view) {
     this.view = java.util.Objects.requireNonNull(view);
     cards = new CardKnowledge(view);
-    teams = new TeamKnowledge(view);
+    behavior = new PublicBehaviorInference(view);
+    teams = new TeamKnowledge(view, behavior);
+    joker = new JokerBelief(view, teams, behavior);
     legal = LegalActions.legalActions(new LegalActionContext(view.hand(), view.contract().trump(),
         view.trickNumber(), view.trick()));
     conditions = view.trick().stream().findFirst().map(play ->
@@ -48,6 +52,14 @@ public final class PlayFacts {
   /**
    * 이번 관측에서 계산한 카드 카운팅을 반환합니다.
    */
+  public PublicBehaviorInference behavior() {
+    return behavior;
+  }
+
+  public JokerBelief joker() {
+    return joker;
+  }
+
   public CardKnowledge cards() {
     return cards;
   }

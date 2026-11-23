@@ -12,6 +12,23 @@ import mighty.model.*;
  */
 public final class RetainedHandEvaluator {
 
+  /**
+   * 동점에서는 프렌드가 버림패를 몰라도 알아볼 수 있는 일반 탑을 남깁니다.
+   */
+  public int visibleTopCount(List<Card> kept, Trump trump) {
+    int count = 0;
+    for (Suit suit : Suit.values()) {
+      var top = java.util.Arrays.stream(Rank.values())
+          .map(rank -> new StandardCard(suit, rank))
+          .filter(card -> !card.equals(mighty.game.rule.Rules.mighty(trump)))
+          .max(java.util.Comparator.comparingInt(card -> card.rank().value())).orElseThrow();
+      if (kept.contains(top)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
   public double score(List<Card> kept, List<Card> discarded, Trump trump) {
     BiddingHand hand = BiddingHand.from(kept);
     Optional<NoTrumpPlan> noTrump = trump == Trump.NO_TRUMP

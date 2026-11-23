@@ -26,7 +26,7 @@ final class OppositionLeadStrategy {
         && f.card() instanceof mighty.model.Joker && view.context()
         .friendStatus() instanceof mighty.game.friend.UnrevealedFriend;
     if (view.contract().trump() == mighty.model.Trump.NO_TRUMP || jokerFriend
-        || OppositionJokerPressure.passedJokerOpportunity(view, facts)) {
+        || OppositionJokerPressure.jokerLikelyOnDeclarerTeam(view, facts)) {
       var call = mighty.ai.play.JokerCallPlan.call(view, facts, legal);
       if (call.isPresent()) {
         return new PlayDecision(call.get(), "공개 진행을 근거로 여당에 있을 수 있는 조커를 총으로 압박합니다.");

@@ -54,7 +54,7 @@ final class NoTrumpOperations {
     // 프렌드에게 넘길 물패와 반환을 받을 상위패를 한 문양에 함께 남깁니다.
     var connection = position.inSuit(target.suit());
     var request = connection.stream().filter(a -> a.card().points() == 0
-        && ((StandardCard) a.card()).rank().value() < target.rank().value())
+            && ((StandardCard) a.card()).rank().value() < target.rank().value())
         .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
     if (request.isEmpty() || connection.stream().noneMatch(a -> position.facts().isSuitTop(a.card())
         && ((StandardCard) a.card()).rank().value() > target.rank().value())) {
@@ -62,12 +62,13 @@ final class NoTrumpOperations {
     }
     // 연속 탑이 긴 사이드부터 소진합니다. 공개된 카드로 새로 탑이 된 점수 카드도 포함합니다.
     var top = position.ordinary().stream().filter(a -> a.card().points() > 0
-        && ((StandardCard) a.card()).suit() != target.suit() && position.facts().isSuitTop(a.card()))
+            && ((StandardCard) a.card()).suit() != target.suit() && position.facts()
+            .isSuitTop(a.card()))
         .max(Comparator.<Action>comparingInt(a -> hand.ordinaryTopRunLength(
-            ((StandardCard) a.card()).suit(), Trump.NO_TRUMP))
+                ((StandardCard) a.card()).suit(), Trump.NO_TRUMP))
             .thenComparingInt(a -> ((StandardCard) a.card()).rank().value()));
     return Optional.of(top.map(a -> new mighty.ai.play.PlayDecision(a,
-        "회수할 문양과 조커를 남기고 다른 문양의 탑부터 돌립니다."))
+            "회수할 문양과 조커를 남기고 다른 문양의 탑부터 돌립니다."))
         .orElseGet(() -> new mighty.ai.play.PlayDecision(request.get(),
             "사이드 탑을 소진해 남겨 둔 물패로 프렌드를 찾습니다.")));
   }
@@ -112,11 +113,29 @@ final class NoTrumpOperations {
 
   static Optional<mighty.ai.play.PlayDecision> continueOpeningPlan(DeclarerPosition position) {
     var view = position.view();
-    if (view.contract().trump() != Trump.NO_TRUMP
-        || !position.calls(Rules.mighty(Trump.NO_TRUMP))) {
+    if (view.contract().trump() != Trump.NO_TRUMP) {
       return Optional.empty();
     }
     var plan = openingPlan(position);
+    if (plan.purpose() == NoTrumpOpeningPlan.Purpose.DEVELOP_PRIMARY) {
+      var primary = NoTrumpPlanner.signallingSuit(BiddingHand.from(initialCards(position)));
+      var main = position.inSuit(primary);
+      var tops = main.stream().filter(a -> position.facts().isSuitTop(a.card())).toList();
+      if (!tops.isEmpty()) {
+        return Optional.of(new mighty.ai.play.PlayDecision(PlaySupport.highest(tops),
+            plan.purpose().explanation()));
+      }
+      if (!main.isEmpty() && !position.facts().cards().outsideCards(primary).isEmpty()) {
+        return position.legal().stream().filter(a -> a instanceof JokerLead lead
+                && lead.declaredSuit() == primary).findFirst()
+            .map(a -> new mighty.ai.play.PlayDecision(a,
+                "주력의 미소모 상위는 조커로 빼고 마이티는 실패한 탐색 뒤의 회수에 남깁니다."));
+      }
+      return Optional.empty();
+    }
+    if (!position.calls(Rules.mighty(Trump.NO_TRUMP))) {
+      return Optional.empty();
+    }
     if (plan.purpose() != NoTrumpOpeningPlan.Purpose.RUN_PRIMARY) {
       return Optional.empty();
     }

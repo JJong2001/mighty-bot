@@ -27,15 +27,17 @@ public final class RuleDiscardPolicy implements DiscardPolicy {
           List<Card> kept = new ArrayList<>(view.hand());
           kept.removeAll(discarded);
           double score = evaluator.score(kept, discarded, view.contract().trump());
-          candidates.add(new ScoredDiscard(discarded, score));
+          candidates.add(new ScoredDiscard(discarded, score,
+              evaluator.visibleTopCount(kept, view.contract().trump())));
         }
       }
     }
-    return candidates.stream().sorted(Comparator.comparingDouble(ScoredDiscard::score).reversed())
+    return candidates.stream().sorted(Comparator.comparingDouble(ScoredDiscard::score)
+            .thenComparingInt(ScoredDiscard::visibleTops).reversed())
         .limit(limit).map(ScoredDiscard::cards).toList();
   }
 
-  private record ScoredDiscard(List<Card> cards, double score) {
+  private record ScoredDiscard(List<Card> cards, double score, int visibleTops) {
 
   }
 

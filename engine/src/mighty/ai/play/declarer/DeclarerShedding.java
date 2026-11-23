@@ -55,11 +55,13 @@ final class DeclarerShedding {
     }
     var safe = facts.winningActions().stream().filter(position.legal()::contains)
         .filter(action -> !(action.card() instanceof StandardCard card) || !view.contract().trump()
-            .matches(card.suit()))
-        .filter(action -> facts.isSecured(new mighty.game.trick.PublicPlay(view.self(), action)))
+            .matches(card.suit()) || view.contract().trump().matches(facts.conditions().leadSuit()))
+        .filter(action -> facts.isSecured(new mighty.game.trick.PublicPlay(view.self(), action))
+            || action.card() instanceof StandardCard card
+            && card.suit() == facts.conditions().leadSuit() && facts.isSuitTop(card))
         .toList();
     return safe.isEmpty() ? Optional.empty()
-        : Optional.of(new PlayDecision(PlaySupport.cheapest(safe, view),
+        : Optional.of(new PlayDecision(SpecialCardPlan.recoveryFirst(safe, view, facts),
             "점수가 더 모이기 전에 확보할 수 있는 구를 잡습니다."));
   }
 

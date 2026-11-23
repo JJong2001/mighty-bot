@@ -31,6 +31,18 @@ public final class NoTrumpOpeningPlanner {
   public static NoTrumpOpeningPlan plan(BiddingHand hand, Collection<? extends Card> buried,
       FriendSelection selection, int points, List<Bid> history) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+    if (selection == SpecialFriend.NONE && hand.hasMighty(Trump.NO_TRUMP) && hand.hasJoker()) {
+      var main = NoTrumpPlanner.signallingSuit(hand);
+      var holding = HoldingControl.analyze(own, List.copyOf(buried), Trump.NO_TRUMP, main);
+      if (holding.topRun() > 0 && holding.length() > holding.topRun()) {
+        var opening = own.stream().filter(StandardCard.class::isInstance)
+            .map(StandardCard.class::cast).filter(card -> card.suit() == main)
+            .filter(card -> isTop(card, own, buried))
+            .max(Comparator.comparingInt(card -> card.rank().value()));
+        return new NoTrumpOpeningPlan(selection, opening, Optional.empty(), buried.size() == 3,
+            false, DEVELOP_PRIMARY);
+      }
+    }
     if (!hand.hasMighty(Trump.NO_TRUMP) && !hand.hasJoker() && hand.hasGun(Trump.NO_TRUMP)
         && selection instanceof CardFriend friend
         && friend.card().equals(Rules.mighty(Trump.NO_TRUMP))) {
@@ -75,6 +87,17 @@ public final class NoTrumpOpeningPlanner {
     if (selection instanceof CardFriend called && called.card() instanceof Joker
         && hand.hasMighty(Trump.NO_TRUMP)) {
       var main = NoTrumpPlanner.withFriend(hand, buried, called.card()).primary();
+      var holding = HoldingControl.analyze(own, List.copyOf(buried), Trump.NO_TRUMP, main);
+      boolean blockedSide = Arrays.stream(Suit.values()).filter(suit -> suit != main)
+          .map(suit -> HoldingControl.analyze(own, List.copyOf(buried), Trump.NO_TRUMP, suit))
+          .anyMatch(side -> side.length() > side.topRun() && side.blockers() > 0);
+      if (holding.topRun() == holding.length() && holding.topRun() > 1 && blockedSide) {
+        var opening = own.stream().filter(StandardCard.class::isInstance)
+            .map(StandardCard.class::cast).filter(card -> card.suit() == main)
+            .min(Comparator.comparingInt(card -> card.rank().value()));
+        return new NoTrumpOpeningPlan(selection, opening, Optional.empty(), buried.size() == 3,
+            false, PRESERVE_ENTRY);
+      }
       var opening = sideAce(hand, own, main);
       if (opening.isPresent()) {
         return new NoTrumpOpeningPlan(selection, opening, Optional.empty(), buried.size() == 3,

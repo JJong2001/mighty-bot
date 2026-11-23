@@ -56,14 +56,15 @@ class OppositionTrumpFollowTest {
   }
 
   @Test
-  @DisplayName("A와 K는 희생 후보가 아니므로 낮은 기루를 낸다")
-  void preservesAceAndKingAsExceptions() {
+  @DisplayName("일반 탑카는 보존하되 외부 상위에 막힌 짧은 점수는 압박한다")
+  void preservesOrdinaryTopButPressuresBlockedShortHonor() {
     for (String honour : List.of("DA", "DK")) {
       View view = view(honour + " D5 S2 S3 S4 H2 H3 H4 C2", new Seat(4),
           List.of(), SpecialFriend.NONE);
       PlayFacts facts = new PlayFacts(view);
 
-      assertEquals(CardParser.parse("D5"),
+      assertEquals(facts.isSuitTop(CardParser.parse(honour)) ? CardParser.parse("D5")
+              : CardParser.parse(honour),
           OppositionTrumpFollow.choose(view, facts, facts.legalActions()).action().card());
     }
   }

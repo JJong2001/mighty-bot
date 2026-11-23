@@ -33,6 +33,22 @@ public final class SpecialCardPlan {
         : Optional.empty();
   }
 
+  /**
+   * 기루 지원에는 마이티를 우선하고, 사이드의 일반 탑카는 조커보다 먼저 씁니다.
+   */
+  public static Action recoveryFirst(List<Action> winning, View view, PlayFacts facts) {
+    var mighty = winning.stream()
+        .filter(a -> a.card().equals(Rules.mighty(view.contract().trump()))).findFirst();
+    if (view.contract().trump().matches(facts.conditions().leadSuit()) && mighty.isPresent()) {
+      return mighty.get();
+    }
+    var ordinary = PlaySupport.ordinary(winning, view);
+    if (!ordinary.isEmpty()) {
+      return PlaySupport.cheapest(ordinary, view);
+    }
+    return mighty.orElseGet(() -> PlaySupport.cheapest(winning, view));
+  }
+
   public static Optional<Action> leadMighty(List<Action> legal, View view, PlayFacts facts) {
     if (view.trickNumber().value() == 9 || !view.hand().contains(Joker.INSTANCE)
         || view.role() == Role.OPPOSITION || view.role() == Role.UNDETERMINED

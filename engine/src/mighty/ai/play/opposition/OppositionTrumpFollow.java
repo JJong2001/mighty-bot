@@ -70,9 +70,7 @@ final class OppositionTrumpFollow {
     if (!low.isEmpty() && !pressureAlready && specialBehind && !survival.survives(highest)) {
       var pressure = trumps.stream().filter(a -> a.card().points() > 0)
           .filter(a -> !survival.survives((StandardCard) a.card()))
-          .filter(a -> !a.card().equals(highest)
-              || facts.cards().trumps().outside().stream().filter(higher ->
-              higher.rank().value() > ((StandardCard) a.card()).rank().value()).count() > 1)
+          .filter(a -> !facts.isSuitTop(a.card()))
           .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
       if (pressure.isPresent()) {
         return new PlayDecision(pressure.get(),

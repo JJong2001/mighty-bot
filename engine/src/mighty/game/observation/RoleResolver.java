@@ -39,9 +39,11 @@ final class RoleResolver {
       return Role.UNDETERMINED;
     }
     if (selection instanceof CardFriend cardFriend) {
-      return privateInfo.hand().contains(cardFriend.card())
-          ? Role.FRIEND
-          : Role.OPPOSITION;
+      boolean heldOrPlayed = privateInfo.hand().contains(cardFriend.card())
+          || context.history().stream().flatMap(trick -> trick.cards().stream())
+          .anyMatch(play -> play.seat().equals(self)
+              && play.action().card().equals(cardFriend.card()));
+      return heldOrPlayed ? Role.FRIEND : Role.OPPOSITION;
     }
     throw new IllegalStateException(
         "프렌드 지정 방식과 공개 상태가 일치하지 않습니다."

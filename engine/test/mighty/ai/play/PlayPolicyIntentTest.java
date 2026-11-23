@@ -51,14 +51,14 @@ class PlayPolicyIntentTest {
   }
 
   @Test
-  @DisplayName("기루 두 장 중 K는 예외로 보존하고 낮은 기루를 낸다")
-  void preservesKingWhenTwoTrumpsAndSpecialThreatRemainsBehind() {
+  @DisplayName("특수 위협을 버티지 못하는 짧은 기루는 K도 압박에 사용한다")
+  void pressuresWithBlockedKingWhenShortCoverCannotProtectIt() {
     for (boolean sixSeats : new boolean[]{false, true}) {
       View view = new Scenario(Trump.DIAMOND, 2, sixSeats, 3).viewAtTurn(7);
 
       assertTrue(view.hand().contains(CardParser.parse("DK")));
       assertTrue(view.hand().contains(CardParser.parse("D6")));
-      assertEquals(CardParser.parse("D6"), new RulePlayPolicy().choose(view).card());
+      assertEquals(CardParser.parse("DK"), new RulePlayPolicy().choose(view).card());
     }
   }
 }

@@ -16,8 +16,14 @@ public final class TeamKnowledge {
 
   private final View view;
   private final Optional<Seat> submittedFriend;
+  private final PublicBehaviorInference behavior;
 
   public TeamKnowledge(View view) {
+    this(view, new PublicBehaviorInference(view));
+  }
+
+  TeamKnowledge(View view, PublicBehaviorInference behavior) {
+    this.behavior = behavior;
     this.view = java.util.Objects.requireNonNull(view);
     // 현재 구에 지정 카드가 나왔다면 별도 공개 알림을 기다릴 필요가 없습니다.
     submittedFriend = view.friendSelection() instanceof CardFriend friend
@@ -45,13 +51,29 @@ public final class TeamKnowledge {
     if (submittedFriend.isPresent()) {
       return submittedFriend;
     }
-    return FriendSignals.returningFriend(view).filter(seat ->
-        view.role() != Role.OPPOSITION || !seat.equals(view.self()));
+    return FriendSignals.returningFriend(view)
+        .filter(seat -> !OppositionSignals.openingAttackers(view).contains(seat))
+        .filter(seat ->
+            view.role() != Role.OPPOSITION || !seat.equals(view.self()));
   }
 
   /**
-   * 숨은 프렌드의 실제 자리를 조회하거나 추측을 확정 정보로 쓰지 않습니다.
+   * 공개 증거의 추정은 공식 소속·정산에 쓰는 isAlly와 분리합니다.
    */
+  public boolean isLikelyAlly(Seat seat) {
+    if (isAlly(seat)) {
+      return true;
+    }
+    if (view.context().friendStatus() instanceof NoFriend || friendSeat().isPresent()) {
+      return false;
+    }
+    if (view.role() == Role.DECLARER) {
+      return behavior.likelyFriends().contains(seat);
+    }
+    return view.role() == Role.OPPOSITION && !behavior.likelyFriends().isEmpty()
+        && !seat.equals(view.context().declarer()) && !behavior.likelyFriends().contains(seat);
+  }
+
   public boolean isAlly(Seat seat) {
     if (view.self().equals(seat)) {
       return true;

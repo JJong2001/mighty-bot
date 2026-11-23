@@ -19,6 +19,9 @@ public final class JokerCallPlan {
         || !facts.cards().outsideCards().contains(Joker.INSTANCE)) {
       return Optional.empty();
     }
+    if (view.role() == mighty.game.Role.OPPOSITION && facts.joker().likelyHeldByOpposition()) {
+      return Optional.empty();
+    }
     if (view.role() == mighty.game.Role.DECLARER
         && view.friendSelection() instanceof mighty.game.friend.CardFriend friend
         && friend.card() instanceof Joker) {

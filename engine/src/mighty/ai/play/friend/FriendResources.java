@@ -45,6 +45,15 @@ final class FriendResources {
       if (entry) {
         return true;
       }
+      int possibleTrump = facts.cards().trumps().outside().size();
+      int special = (facts.cards().outsideCards().contains(Joker.INSTANCE) ? 1 : 0)
+          + (facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump())) ? 1 : 0);
+      int sideSlots = facts.cards().trumps().remainingHand(view.context().declarer())
+          - possibleTrump - special;
+      if (sideSlots > 0 && DeclarerOperations.contains(view, facts, card.suit())
+          && !facts.cards().isVoid(view.context().declarer(), card.suit())) {
+        return true;
+      }
     }
     if (!DeclarerOperations.contains(view, facts, card.suit())) {
       return false;

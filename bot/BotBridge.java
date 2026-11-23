@@ -196,15 +196,19 @@ public final class BotBridge {
       case "discard" -> {
         List<Bid> declarations = contractHistory(req);
         out.put("type", "discard");
-        out.put("cards", POLICIES.preparation()
-            .choose(new DiscardView(self, contract(req.get("contract")), hand, auction(req, order)),
-                declarations.get(0), declarations).discarded().stream().map(Card::toCode).toList());
+        var plan = POLICIES.preparation().choose(
+            new DiscardView(self, contract(req.get("contract")), hand, auction(req, order)),
+            declarations.get(0), declarations);
+        out.put("cards", plan.discarded().stream().map(Card::toCode).toList());
+        out.put("plannedContract", Map.of("points", plan.contract().points(),
+            "trump", trump(plan.contract().trump())));
       }
       case "after" -> {
         Bid current = contract(req.get("contract"));
         List<Bid> declarations = contractHistory(req);
         var resolution = POLICIES.preparation().resolveContract(
-            new FriendView(self, current, hand, cards(req.get("discarded")), declarations, auction(req, order)),
+            new FriendView(self, current, hand, cards(req.get("discarded")), declarations,
+                auction(req, order)),
             declarations.get(0),
             declarations);
         Bid selected = resolution.contract();

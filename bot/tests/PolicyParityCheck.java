@@ -42,8 +42,25 @@ public final class PolicyParityCheck {
     return req;
   }
 
+  private static void verifyDiscardContractContext() {
+    String hand = "SA D2 D6 D9 D10 DA H3 H6 H8 HJ HK C2 C7";
+    var bid = new Bid(15, Trump.DIAMOND);
+    var plan = LOCAL.preparation().choose(new DiscardView(new Seat(0), bid, cards(hand)),
+        bid, List.of(bid));
+    var req = request("discard", hand);
+    req.put("contract", Map.of("points", 15, "trump", "D"));
+    req.put("contractHistory", List.of(req.get("contract")));
+    var response = BotBridge.choose(req);
+    require(response.get("plannedContract").equals(Map.of("points", plan.contract().points(),
+        "trump",
+        plan.contract().trump().name().substring(0, 1))));
+    require(new HashSet<>((List<?>) response.get("cards")).equals(
+        new HashSet<>(plan.discarded().stream().map(Card::toCode).toList())));
+  }
+
   public static void main(String[] args) {
     verifyNoTrumpConnectionPlan();
+    verifyDiscardContractContext();
     var contested = request("before", "JK SK S5 S3 D10 HA HK HQ H2 CK");
     contested.put("contract", Map.of("points", 17, "trump", "N"));
     var suited = BotBridge.choose(contested);

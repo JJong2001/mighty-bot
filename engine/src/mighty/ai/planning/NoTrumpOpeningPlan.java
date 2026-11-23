@@ -22,6 +22,8 @@ public record NoTrumpOpeningPlan(
    * A의 선사용과 지원 요청을 서로 다른 운영 목적으로 보존합니다.
    */
   public enum Purpose {
+    DEVELOP_PRIMARY("일반 주력 탑카부터 확인하고 조커로 상위를 빼며 마이티는 선 회수에 남깁니다."),
+    PRESERVE_ENTRY("자력 주력으로 초구를 확보하고 사이드 탑카는 이후 회수에 남깁니다."),
     FORCE_JOKER("주력 탑카로 초구를 확보한 뒤 총을 쏘고 독립 회수 문양으로 선을 돌려받습니다."),
     RUN_PRIMARY("주력의 자력 탑카부터 소모하고 마이티 지원은 사이드 손실 처리에 남깁니다."),
     REQUEST_FRIEND("지정 프렌드를 먼저 찾아 회수 카드와 다른 문양의 운영 자원을 남깁니다."),

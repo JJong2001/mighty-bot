@@ -23,9 +23,12 @@ final class OppositionJokerPressure {
 
   static Optional<PlayDecision> choose(View view, PlayFacts facts, List<Action> legal) {
     var winner = facts.currentWinner().orElseThrow();
-    if (!view.contract().trump().matches(facts.conditions().leadSuit())
-        || !(winner.action().card() instanceof StandardCard top)
-        || !view.contract().trump().matches(top.suit()) || !facts.isSuitTop(top)) {
+    boolean trumpLead = view.contract().trump().matches(facts.conditions().leadSuit());
+    var alliedBehind = new java.util.HashSet<>(facts.remainingSeats().stream()
+        .filter(facts.teams()::isLikelyAlly).toList());
+    boolean inferredJokerBehind = facts.joker().likelyAt(alliedBehind);
+    if ((!trumpLead && !inferredJokerBehind)
+        || !(winner.action().card() instanceof StandardCard top) || !facts.isSuitTop(top)) {
       return Optional.empty();
     }
     var mighty = Rules.mighty(view.contract().trump());
@@ -47,7 +50,7 @@ final class OppositionJokerPressure {
         || !facts.cards().outsideCards().contains(Joker.INSTANCE)
         || Rules.strength(Joker.INSTANCE, facts.conditions()) <= Rules.strength(top,
         facts.conditions())
-        || passedJokerOpportunity(view, facts)) {
+        || (!inferredJokerBehind && jokerLikelyOnDeclarerTeam(view, facts))) {
       return Optional.empty();
     }
     var ownTrump = facts.cards().trumps().own();
@@ -67,36 +70,11 @@ final class OppositionJokerPressure {
         .map(a -> new PlayDecision(a, "뒤 야당이 조커로 받을 수 있어 보존 가치가 낮은 점수 한 장을 지원합니다."));
   }
 
-  /**
-   * 야당의 점수 뒤에 두 야당 모두 조커를 낼 기회가 있었다면 공개 조커콜 근거로 씁니다.
-   */
-  static boolean passedJokerOpportunity(View view, PlayFacts facts) {
-    return view.context().history().stream().anyMatch(trick -> {
-      if (!trick.winner().equals(view.context().declarer())
-          || !view.contract().trump().matches(Rules.conditionsFor(
-          view.contract().trump(), trick.number(), trick.cards().get(0).action()).leadSuit())
-          || trick.number().isFirst() || trick.cards().stream()
-          .anyMatch(p -> p.action().card() instanceof Joker)) {
-        return false;
-      }
-      var plays = trick.cards();
-      var conditions = Rules.conditionsFor(view.contract().trump(), trick.number(),
-          plays.get(0).action());
-      var winningCard = plays.stream().filter(play -> play.seat().equals(trick.winner()))
-          .findFirst().orElseThrow().action().card();
-      if (Rules.strength(Joker.INSTANCE, conditions) <= Rules.strength(winningCard, conditions)) {
-        return false;
-      }
-      for (int i = 0; i < plays.size(); i++) {
-        var play = plays.get(i);
-        if (facts.teams().isAlly(play.seat()) && play.action().card() instanceof StandardCard card
-            && card.points() > 0 && plays.subList(i + 1, plays.size()).stream()
-            .filter(p -> facts.teams().isAlly(p.seat())).count() == 2) {
-          return true;
-        }
-      }
-      return false;
-    });
+  static boolean jokerLikelyOnDeclarerTeam(View view, PlayFacts facts) {
+    var seats = new java.util.HashSet<mighty.game.Seat>();
+    seats.add(view.context().declarer());
+    facts.teams().friendSeat().ifPresent(seats::add);
+    seats.addAll(facts.behavior().likelyFriends());
+    return facts.joker().likelyAt(seats);
   }
-
 }

@@ -27,6 +27,7 @@ final class FriendPointSupport {
     FriendResources resources = new FriendResources(view, facts);
     int strength = Rules.strength(winner.action().card(), facts.conditions());
     return PlaySupport.ordinary(legal, view).stream().filter(a -> a.card().points() > 0)
+        .filter(a -> PointExposurePlan.allows(view, facts, a))
         .filter(a -> !view.contract().trump().matches(((StandardCard) a.card()).suit()))
         .filter(a -> Rules.strength(a.card(), facts.conditions()) <= strength)
         .filter(a -> !resources.preserve((StandardCard) a.card()))
