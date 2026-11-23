@@ -81,7 +81,7 @@ final class NoTrumpBidEvaluator {
       }
     }
     if (FlexibleNoTrumpOpening.available(hand)) {
-      return FlexibleNoTrumpOpening.assess(hand);
+      return FlexibleNoTrumpOpening.assess(hand, excluded.isEmpty());
     }
     if (ownMighty && resources.length() >= 5
         && hand.ordinaryTopRunLength(resources.primary(), resources.trump()) > 0) {

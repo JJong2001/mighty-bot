@@ -27,6 +27,23 @@ import org.junit.jupiter.params.provider.ValueSource;
 class RuleBiddingPolicyTest {
 
   @ParameterizedTest
+  @CsvSource({
+      "S8 SQ SA D3 D10 DA C8 CK CA JK, 15, true",
+      "S2 SQ SK SA CA C7 H4 H10 HQ JK, 16, true",
+      "S8 SJ SA D3 D10 DA C8 CK CA JK, 13, false"
+  })
+  void pricesSixteenNoTrumpWithTwoSourcesAndOneDevelopableSuit(String cards, int opening, boolean competes) {
+    var own = CardParser.parseList(cards);
+    var policy = new RuleBiddingPolicy();
+    var openingTrump = competes ? Trump.NO_TRUMP : Trump.SPADE;
+    assertEquals(new BidOffer(new Bid(opening, openingTrump)),
+        policy.choose(new BiddingView(new Seat(0), own, 40, state())));
+    var previous = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.HEART))));
+    var expected = competes ? new BidOffer(new Bid(16, Trump.NO_TRUMP)) : BidPass.INSTANCE;
+    assertEquals(expected, policy.choose(new BiddingView(new Seat(1), own, 40, previous)));
+  }
+
+  @ParameterizedTest
   @ValueSource(strings = {
       "SK S3 HJ H10 H9 CA CK CJ C2 JK"
   })

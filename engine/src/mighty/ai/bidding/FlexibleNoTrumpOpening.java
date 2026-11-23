@@ -32,11 +32,23 @@ final class FlexibleNoTrumpOpening {
     return aces >= 1 && seconds >= 2;
   }
 
-  static BidAssessment assess(BiddingHand hand) {
+  static BidAssessment assess(BiddingHand hand, boolean beforeKitty) {
     int ordinary = ordinaryWins(hand);
     // 조커를 직접 보유하면 일반 승리와 마이티 지원을 별개 구에 배치할 수 있습니다.
     int controls = ordinary + (hand.hasJoker() ? 1 : 0) + 1;
+    int opening = 15;
     int ceiling = hand.hasJoker() && controls >= 7 ? 16 : 15;
+    if (beforeKitty && hasPartialTopControl(hand, ordinary)) {
+      ceiling = 16;
+      if (Arrays.stream(Suit.values()).filter(s -> hand.ordinaryTopRunLength(s, Trump.NO_TRUMP) == 0)
+          .map(s -> hand.ordinaryHolding(s, Trump.NO_TRUMP))
+          .anyMatch(h -> h.ranks().stream().filter(r -> r.value() >= Rank.TEN.value()).count() >= 2)) {
+        opening = 16;
+      }
+      return new BidAssessment(Trump.NO_TRUMP, true, opening, ceiling, 175, List.of(
+          "두 문양 이상의 일반 탑과 마이티·조커로 선을 잡고 빈 문양을 물패 처리에 씁니다.",
+          "탑이 없는 문양의 상위 연결은 바닥과 프렌드 지원을 보고 다시 평가합니다."));
+    }
     return new BidAssessment(Trump.NO_TRUMP, true, 15, ceiling, ceiling * 10 + 15, List.of(
         "일반 연속 승리 " + ordinary + "구와 특수카드·프렌드 지원을 경쟁 자원으로 평가합니다.",
         "바닥의 미확인 카드는 승리 수에 더하지 않고 실제 버리기 이후 공약을 다시 평가합니다."));
@@ -48,7 +60,23 @@ final class FlexibleNoTrumpOpening {
     }
     return available(hand) && Arrays.stream(Suit.values())
         .filter(suit -> hand.ordinaryTopRunLength(suit, Trump.NO_TRUMP) > 0).count() >= 2
-        && assess(hand).ceilingPoints() >= points;
+        && assess(hand, true).ceilingPoints() >= points;
+  }
+
+  private static boolean hasPartialTopControl(BiddingHand hand, int ordinary) {
+    if (ordinary < 3 || !hand.hasMighty(Trump.NO_TRUMP) || !hand.hasJoker()) {
+      return false;
+    }
+    var occupied = Arrays.stream(Suit.values())
+        .filter(s -> hand.ordinaryHolding(s, Trump.NO_TRUMP).size() > 0).toList();
+    // 열 장에서 한 문양이 비고, 두 문양에 탑이 있으며, 막힌 문양도 상위 보강 여지가 있어야 합니다.
+    return occupied.size() == 3
+        && occupied.stream().mapToInt(s -> hand.ordinaryHolding(s, Trump.NO_TRUMP).size()).sum() == 8
+        && occupied.stream().filter(s -> hand.ordinaryTopRunLength(s, Trump.NO_TRUMP) > 0)
+            .count() == 2
+        && occupied.stream().filter(s -> hand.ordinaryTopRunLength(s, Trump.NO_TRUMP) == 0)
+            .anyMatch(s -> hand.ordinaryHolding(s, Trump.NO_TRUMP).ranks().get(0).value()
+                >= Rank.QUEEN.value());
   }
 
   static int ordinaryWins(BiddingHand hand) {
