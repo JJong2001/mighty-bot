@@ -7,11 +7,14 @@ import java.util.List;
 import mighty.ai.play.declarer.DeclarerStrategy;
 import mighty.game.Seat;
 import mighty.game.bidding.Bid;
+import mighty.game.bidding.BidOffer;
+import mighty.game.bidding.PublicBid;
 import mighty.game.friend.CardFriend;
 import mighty.game.friend.RevealedFriend;
 import mighty.game.friend.UnrevealedFriend;
 import mighty.game.observation.Context;
 import mighty.game.observation.View;
+import mighty.model.Joker;
 import mighty.model.Trump;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -24,9 +27,67 @@ class ExtraWinnerSupportTest {
 
   private static View withReturn(View v) {
     var c = v.context();
+    var heart = new Bid(v.contract().points(), Trump.HEART);
     var ctx = new Context(c.playOrder(), c.declarer(), c.friendStatus(), c.history(),
-        List.of(new Bid(v.contract().points(), Trump.HEART), v.contract()));
-    return new View(v.self(), v.privateInfo(), v.role(), v.contract(), FRIEND, ctx, v.trick());
+        List.of(heart, v.contract()), List.of(new PublicBid(c.declarer(), new BidOffer(heart))));
+    return new View(v.self(), v.privateInfo(), v.role(), v.contract(), v.friendSelection(), ctx, v.trick());
+  }
+
+  @ParameterizedTest
+  @CsvSource({"D3, DA", "C8, H3"})
+  void suitedFriendCanCashSideTopBeforeTwoTrumpRoundsUnlessThereIsARuffRisk(
+      String oppositionPlay, String expected) {
+    var suit = Trump.HEART;
+    var won = row(1, suit, p(0, "D2"), p(1, "SA"), p(2, oppositionPlay), p(3, "D6"), p(4, "D7"));
+    var current = view(1, 0, suit, 16, "DA H2 D8 D9 C6 C5 S4 S3 H3", "", FRIEND,
+        new RevealedFriend(new Seat(1)), List.of(won), List.of());
+    assertEquals(card(expected), new RulePlayPolicy().choose(current).card());
+  }
+
+  @Test
+  void noTrumpFriendCanCashWithoutAPublicReturnAnnouncement() {
+    var won = row(1, NT, p(0, "D2"), p(1, "SA"), p(2, "D3"), p(3, "D7"), p(4, "D9"));
+    var current = view(1, 0, NT, 16, "CA H8 H4 C7 S4 S3 S2 H3 C6", "", FRIEND,
+        new RevealedFriend(new Seat(1)), List.of(won), List.of());
+    assertEquals(card("CA"), new RulePlayPolicy().choose(current).card());
+  }
+
+  @ParameterizedTest
+  @CsvSource({"15, CA, CA", "16, SK, SK", "19, SQ, H8"})
+  void usesIndependentTopEvenWithoutEarlierDeclarerWinners(int points, String held, String expect) {
+    var handoff = row(1, NT, p(0, "D2"), p(1, "SA"), p(2, "D3"), p(3, "D7"), p(4, "D9"));
+    var current = withReturn(view(1, 0, NT, points, held + " H8 H4 C7 S4 S3 S2 H3 C6", "",
+        FRIEND, new RevealedFriend(new Seat(1)), List.of(handoff), List.of()));
+    assertEquals(card(expect), new RulePlayPolicy().choose(current).card());
+  }
+
+  @Test
+  void jokerFriendCashesAnotherAceButKeepsSpadeKingWhileMightyIsOutside() {
+    var first = row(1, NT, p(0, "DA"), p(1, "D8"), p(2, "D4"), p(3, "D6"), p(4, "D10"));
+    var second = row(2, NT, p(0, "D2"), p(1, "JK"), p(2, "D3"), p(3, "D7"), p(4, "D9"));
+    var friend = new CardFriend(Joker.INSTANCE);
+    var revealed = new RevealedFriend(new Seat(1));
+    var history = List.of(first, second);
+    var policy = new RulePlayPolicy();
+    var cash = withReturn(view(1, 0, NT, 16, "CA H8 H4 C7 S4 S3 S2 H3", "",
+        friend, revealed, history, List.of()));
+    assertEquals(card("CA"), policy.choose(cash).card());
+    var unsafe = withReturn(view(1, 0, NT, 16, "SK H8 H4 C7 S4 S3 S2 H3", "",
+        friend, revealed, history, List.of()));
+    assertEquals(card("H8"), policy.choose(unsafe).card());
+  }
+
+  @ParameterizedTest
+  @CsvSource({"CA DA H8 D5 S4 S3 C6, DA", "CA C3 H8 D5 S4 S3 C6, CA"})
+  void suitedSideTopProtectsTheUnplayedJokerCallCard(String owned, String expect) {
+    var hearts = Trump.HEART;
+    var history = List.of(
+        row(1, hearts, p(0, "D2"), p(1, "SA"), p(2, "D3"), p(3, "D6"), p(4, "D7")),
+        row(2, hearts, p(1, "HA"), p(2, "H2"), p(3, "H3"), p(4, "H4"), p(0, "H5")),
+        row(3, hearts, p(1, "HK"), p(2, "H6"), p(3, "H7"), p(4, "H9"), p(0, "H10")));
+    var current = view(1, 0, hearts, 16, owned, "", FRIEND, new RevealedFriend(new Seat(1)),
+        history, List.of());
+    assertEquals(card(expect), new RulePlayPolicy().choose(current).card());
   }
 
   @ParameterizedTest

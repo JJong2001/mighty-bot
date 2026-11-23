@@ -102,7 +102,9 @@ final class FriendLeadStrategy {
       }
     }
     List<Action> safeSide = ordinary.stream().filter(a -> !view.contract().trump()
-            .matches(((StandardCard) a.card()).suit())).filter(a -> sideCanLead(a, view, facts))
+            .matches(((StandardCard) a.card()).suit()))
+        .filter(a -> FriendSideCash.preservesSpecialCards(((StandardCard) a.card()).suit(), view, facts))
+        .filter(a -> sideCanLead(a, view, facts))
         .toList();
     if (!safeSide.isEmpty()) {
       return decision(PlaySupport.highest(safeSide),

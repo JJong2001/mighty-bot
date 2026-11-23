@@ -52,17 +52,7 @@ final class NoTrumpReturn {
     var last = history.get(history.size() - 1);
     var requested = new LinkedHashSet<Suit>();
     var first = history.get(0).cards().get(0).action().card();
-    if (points == 20 && first instanceof StandardCard lead && lead.points() == 0
-        && view.friendSelection() instanceof CardFriend friend
-        && friend.card() instanceof StandardCard called && called.suit() == lead.suit()) {
-      // 두 문양을 모두 알렸다면 초구 문양을 먼저, 그 문양이 없으면 다른 선언을 반환합니다.
-      var full = view.context().contractHistory().stream().filter(bid -> bid.points() == 20).toList();
-      var declarations = PublicContractHistory.suitsMostRecentFirst(full);
-      if (declarations.contains(lead.suit())) {
-        requested.add(lead.suit());
-      }
-      requested.addAll(declarations);
-    }
+    requested.addAll(fullReturnRequests(view));
     if (points == 17) {
       view.context().contractHistory().stream().filter(bid -> bid.points() == 16)
           .flatMap(bid -> PublicContractHistory.suitOf(bid.trump()).stream())
@@ -124,25 +114,24 @@ final class NoTrumpReturn {
   private static Optional<PlayDecision> extraWinnerBeforeReturn(View view, PlayFacts facts,
       List<Action> ordinary) {
     var history = view.context().history();
-    if (view.contract().trump() != Trump.NO_TRUMP || view.contract().points() < 17
-        || history.isEmpty() || !(view.friendSelection() instanceof CardFriend friend)) {
+    if (view.contract().trump() != Trump.NO_TRUMP || history.isEmpty()) {
       return Optional.empty();
     }
     var declarer = view.context().declarer();
-    var requested = PlaySupport.announcedReturnSuit(view);
+    var requested = fullReturnRequests(view).stream().filter(suit -> ordinary.stream()
+        .anyMatch(a -> ((StandardCard) a.card()).suit() == suit)).findFirst()
+        .or(() -> PlaySupport.announcedReturnSuit(view));
     if (requested.isEmpty()) {
       return Optional.empty();
     }
-    // 주공이 먼저 탑을 사용하고 지정 카드로 선을 건넨 직후의 한 구만 연장합니다.
+    // 프렌드로 드러나며 선을 잡은 직후에 추가 승리 한 구를 봅니다.
     int handoff = history.size() - 1;
     while (handoff > 0 && history.get(handoff).leader().equals(view.self())
         && history.get(handoff).winner().equals(view.self())) {
       handoff--;
     }
     var transfer = history.get(handoff);
-    if (!transfer.leader().equals(declarer) || !transfer.winner().equals(view.self())
-        || transfer.cards().stream().noneMatch(p -> p.seat().equals(view.self())
-            && p.action().card().equals(friend.card()))) {
+    if (!FriendSideCash.revealedByWinning(view, transfer)) {
       return Optional.empty();
     }
     var prepared = EnumSet.noneOf(Suit.class);
@@ -155,17 +144,12 @@ final class NoTrumpReturn {
       }
       prepared.add(card.suit());
     }
-    // 초구부터 물패로 마이티를 찾았다면 이미 가진 독립 탑으로도 같은 지원이 가능합니다.
-    boolean directMighty = friend.card().equals(mighty.game.rule.Rules.mighty(Trump.NO_TRUMP))
-        && transfer.cards().get(0).action().card().points() == 0;
-    if ((prepared.isEmpty() || (prepared.size() == 1 && prepared.contains(requested.get())))
-        && !directMighty) {
-      return Optional.empty();
-    }
     if (handoff == history.size() - 1) {
       var tops = ordinary.stream().filter(a -> {
         var suit = ((StandardCard) a.card()).suit();
+        // 스페이드 K가 일반 탑이어도 외부 마이티를 빼는 선은 피합니다.
         return suit != requested.get() && facts.isSuitTop(a.card())
+            && FriendSideCash.preservesSpecialCards(suit, view, facts)
             && (!facts.cards().outsideCards().contains(Joker.INSTANCE)
                 || view.context().playOrder().seats().stream().filter(s -> !facts.teams().isAlly(s))
                     .noneMatch(s -> facts.cards().isVoid(s, suit)));
@@ -180,6 +164,24 @@ final class NoTrumpReturn {
       }
     }
     return returning(ordinary, requested.get());
+  }
+
+  private static List<Suit> fullReturnRequests(View view) {
+    if (view.contract().points() != 20 || view.context().history().isEmpty()
+        || !(view.context().history().get(0).cards().get(0).action().card() instanceof StandardCard lead)
+        || lead.points() != 0 || !(view.friendSelection() instanceof CardFriend friend)
+        || !(friend.card() instanceof StandardCard called) || called.suit() != lead.suit()) {
+      return List.of();
+    }
+    var full = view.context().contractHistory().stream().filter(bid -> bid.points() == 20).toList();
+    var declarations = PublicContractHistory.suitsMostRecentFirst(full);
+    // 두 문양을 알렸다면 프렌드를 찾은 초구 문양을 먼저 돌립니다.
+    var suits = new LinkedHashSet<Suit>();
+    if (declarations.contains(lead.suit())) {
+      suits.add(lead.suit());
+    }
+    suits.addAll(declarations);
+    return List.copyOf(suits);
   }
 
   private static Optional<PlayDecision> returning(List<Action> legal, Suit suit) {
