@@ -57,7 +57,7 @@ public final class ContestedSuitAuction {
     var standing = view.bidding().highestBid().orElseThrow();
     var bid = ((BidOffer) standing.action()).bid();
     var suit = PublicContractHistory.suitOf(bid.trump());
-    boolean defense = !standing.seat().equals(view.self()) && suit.isPresent()
+    boolean defense = bid.points() >= 16 && !standing.seat().equals(view.self()) && suit.isPresent()
         && own.holding(suit.get()).size() == 1 && own.holding(suit.get()).contains(Rank.ACE);
     var support = BidderSupportPlan.find(own, view.self(), view.bidding().history());
     if (!defense && support.isEmpty()) {

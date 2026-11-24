@@ -28,6 +28,31 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class RuleBiddingPolicyTest {
 
+  @ParameterizedTest
+  @CsvSource({
+      "SA S2 SJ DJ DQ DK DA CA CQ H10, NO_TRUMP, 17, HEART, 17",
+      "SA H2 H4 H6 HQ HK DA D5 C9 S3, HEART, 17, DIAMOND, 18"
+  })
+  void testsOneLegalLevelAboveAnOperationalCeiling(
+      String cards, Trump strain, int ceiling, Trump opponentSuit, int selected) {
+    var hand = BiddingHand.from(CardParser.parseList(cards));
+    var assessments = new BiddingHandEvaluator().assess(hand);
+    assertTrue(assessments.stream().anyMatch(
+        a -> a.trump() == strain && a.ceilingPoints() == ceiling));
+    var opponent = new PublicBid(new Seat(0), new BidOffer(new Bid(ceiling, opponentSuit)));
+    var auction = state().submit(opponent);
+    var legal = LegalBiddingActions.bidAndPassActions(auction).stream()
+        .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
+    var trial = RuleBiddingPolicy.exploreAboveCeiling(hand, assessments, legal,
+        java.util.Optional.of(opponent));
+    assertTrue(trial.contains(new BidOffer(new Bid(ceiling + 1, strain))));
+    assertTrue(trial.size() <= 2);
+    assertTrue(trial.stream().allMatch(legal::contains));
+    assertEquals(new BidOffer(new Bid(selected, strain)),
+        new RuleBiddingPolicy().choose(new BiddingView(new Seat(1), CardParser.parseList(cards),
+            40, auction)));
+  }
+
   @Test
   void comparesSeventeenNoTrumpWithSolidMainAndSeparateJokerFriendWin() {
     var own = CardParser.parseList("S2 SJ SA DJ DQ DK DA CA CQ H10");

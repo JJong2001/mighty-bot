@@ -1,7 +1,9 @@
 package mighty.ai.bidding;
 
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -13,6 +15,7 @@ import mighty.game.bidding.BidOffer;
 import mighty.game.bidding.BidPass;
 import mighty.game.bidding.BiddingAction;
 import mighty.game.bidding.LegalBiddingActions;
+import mighty.game.bidding.PublicBid;
 import mighty.game.observation.BiddingView;
 import mighty.model.Trump;
 
@@ -62,17 +65,62 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
     BiddingHand hand = BiddingHand.from(view.hand());
     List<BidOffer> legal = LegalBiddingActions.bidAndPassActions(view.bidding()).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
-    var contenders = evaluator.assess(hand).stream().filter(BidAssessment::canCompete)
+    var assessments = evaluator.assess(hand);
+    var contenders = assessments.stream().filter(BidAssessment::canCompete)
         .flatMap(a -> candidates(a, legal)).toList();
-    var alternatives = contenders.stream().map(Candidate::offer).toList();
-    var special = ContestedSuitAuction.specialCompetition(view, hand, legal, alternatives);
+    var standing = view.bidding().highestBid();
+    var publicRival = standing.filter(entry -> !entry.seat().equals(view.self()))
+        .filter(entry -> ((BidOffer) entry.action()).bid().points() >= 16
+            && ((BidOffer) entry.action()).bid().trump() != Trump.NO_TRUMP);
+    var exploration = standing.isEmpty() || publicRival.isPresent()
+        ? exploreAboveCeiling(hand, assessments, legal, publicRival) : List.<BidOffer>of();
+    var alternatives = new LinkedHashSet<>(contenders.stream().map(Candidate::offer).toList());
+    alternatives.addAll(exploration);
+    var offers = List.copyOf(alternatives);
+    var special = ContestedSuitAuction.specialCompetition(view, hand, legal, offers);
     if (special.isPresent()) {
       return special.get().choice();
     }
-    var contested = ContestedSuitAuction.signal(view, hand, alternatives);
+    var regularOffers = contenders.stream().map(Candidate::offer).toList();
+    var contested = ContestedSuitAuction.signal(view, hand, regularOffers);
     if (contested.isPresent()) {
-      return ContestedSuitAuction.evaluate(view, contested.get(), alternatives).choice();
+      return ContestedSuitAuction.evaluate(view, contested.get(), offers).choice();
     }
+    var usual = ordinaryChoice(view, hand, legal, contenders);
+    if (exploration.isEmpty()) {
+      return usual;
+    }
+    if (standing.isEmpty() && usual instanceof BidOffer opening) {
+      return compareOpeningChallenge(hand, opening, exploration);
+    }
+    if (publicRival.isEmpty() || preservesEstablishedFriendPass(view, hand, usual)) {
+      return usual;
+    }
+    if (usual instanceof BidOffer offer) {
+      alternatives.add(offer);
+    }
+    var comparison = ContestedSuitAuction.evaluate(view, publicRival.orElseThrow(),
+        List.copyOf(alternatives));
+    // 추가 탐색 자체 때문에 이미 상한 안에서 고른 공약을 다른 기본 공약으로 바꾸지 않습니다.
+    return exploration.contains(comparison.choice()) ? comparison.choice() : usual;
+  }
+
+  private static boolean preservesEstablishedFriendPass(BiddingView view, BiddingHand hand,
+      BiddingAction usual) {
+    if (usual != BidPass.INSTANCE) {
+      return false;
+    }
+    var route = HighNoTrumpPlan.find(hand).filter(plan -> plan.competitiveShape(hand));
+    if (route.isEmpty()) {
+      return false;
+    }
+    var standing = ((BidOffer) view.bidding().highestBid().orElseThrow().action()).bid();
+    return !route.get().joker() && hand.hasMighty(standing.trump())
+        || route.get().joker() && !route.get().mighty() && standing.points() >= 18;
+  }
+
+  private BiddingAction ordinaryChoice(BiddingView view, BiddingHand hand, List<BidOffer> legal,
+      List<Candidate> contenders) {
     var route = HighNoTrumpPlan.find(hand);
     if (route.isPresent() && view.hand().size() == 10 && route.get().competitiveShape(hand)) {
       var plan = route.get();
@@ -115,6 +163,54 @@ public final class RuleBiddingPolicy implements BiddingPolicy {
         .max(Comparator.<Trump>comparingInt(hand::trumpCount)
             .thenComparingInt(trump -> -trump.ordinal())).orElseThrow();
     return new BidOffer(new Bid(Bid.MIN_POINTS, longest));
+  }
+
+  static List<BidOffer> exploreAboveCeiling(BiddingHand hand, List<BidAssessment> assessments,
+      List<BidOffer> legal, Optional<PublicBid> rival) {
+    if (java.util.Arrays.stream(mighty.model.Suit.values())
+        .mapToInt(suit -> hand.holding(suit).size()).sum() + (hand.hasJoker() ? 1 : 0) != 10) {
+      return List.of();
+    }
+    int standing = rival.map(entry -> ((BidOffer) entry.action()).bid().points()).orElse(0);
+    var ranked = assessments.stream().filter(BidAssessment::canCompete)
+        .filter(a -> a.ceilingPoints() >= 15 && a.ceilingPoints() < Bid.MAX_POINTS)
+        .filter(a -> standing == 0 || standing >= a.ceilingPoints())
+        .filter(a -> a.trump() == Trump.NO_TRUMP
+            ? FlexibleNoTrumpOpening.ordinaryWins(hand) >= 4
+                && (hand.hasMighty(Trump.NO_TRUMP) || hand.hasJoker())
+            : hand.trumpCount(a.trump()) >= 5
+                && CandidateResources.from(hand, a.trump()).hasSideOpening())
+        .sorted(Comparator.comparingInt(BidAssessment::preference).reversed()).toList();
+    // 문양 하나와 노기루 하나만, 각 기존 상한의 바로 윗 숫자를 시험합니다.
+    var suited = ranked.stream().filter(a -> a.trump() != Trump.NO_TRUMP)
+        .map(a -> new BidOffer(new Bid(a.ceilingPoints() + 1, a.trump())))
+        .filter(legal::contains).findFirst();
+    var noTrump = ranked.stream().filter(a -> a.trump() == Trump.NO_TRUMP)
+        .map(a -> new BidOffer(new Bid(a.ceilingPoints() + 1, a.trump())))
+        .filter(legal::contains).findFirst();
+    return Stream.concat(suited.stream(), noTrump.stream()).toList();
+  }
+
+  private BidOffer compareOpeningChallenge(BiddingHand hand, BidOffer opening,
+      List<BidOffer> exploration) {
+    var nearby = exploration.stream().filter(offer -> offer.bid().points() >= opening.bid().points()
+        && offer.bid().points() <= opening.bid().points() + 1).toList();
+    if (nearby.isEmpty()) {
+      return opening;
+    }
+    double baseline = expectedScores.expectedDeclarerScore(hand, opening.bid());
+    var challenger = nearby.stream()
+        .map(offer -> Map.entry(offer, expectedScores.expectedDeclarerScore(hand, offer.bid())))
+        .filter(entry -> entry.getValue() > baseline)
+        .max(Map.Entry.comparingByValue());
+    if (challenger.isEmpty()) {
+      return opening;
+    }
+    var offer = challenger.orElseThrow().getKey();
+    var base = expectedScores.initialBiddingSamples(hand, opening.bid());
+    var trial = expectedScores.initialBiddingSamples(hand, offer.bid());
+    // 첫 입찰의 도전은 짝지은 비교에서 이득이 뚜렷해야 채택합니다.
+    return trial.mean() > base.mean() && !trial.differenceIsUncertain(base) ? offer : opening;
   }
 
   private BidOffer bestScoringOffer(BiddingHand hand, List<Candidate> contenders) {
