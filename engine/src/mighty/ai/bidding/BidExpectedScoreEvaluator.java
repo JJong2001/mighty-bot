@@ -55,7 +55,7 @@ public final class BidExpectedScoreEvaluator {
       new RuleDiscardPolicy(), new RuleFriendPolicy(), new RulePlayPolicy());
   private static final PreparationPlanner PREPARATION_PLANNER = new PreparationPlanner();
 
-  public record PreparedScore(double mean, int wins) {}
+  public record PreparedScore(double mean, int wins, List<Integer> settlements) {}
 
   private record PreparedOutcome(int settlement, boolean succeeded) {}
 
@@ -125,6 +125,31 @@ public final class BidExpectedScoreEvaluator {
     return preparedScore(current, seen, preparation, List.of(), CONFIRM_KNOWN_KITTY_SAMPLES).mean();
   }
 
+  /** 같은 상대 패에서 득실 차를 잽니다. 전환은 확인 규모의 구간 하한이 양수일 때 채택합니다. */
+  public boolean clearlyImprovesPreparedContract(Bid current, List<Card> seen,
+      PreparationPlan keep, PreparationPlan change, List<PublicBid> auction) {
+    for (int count : new int[] {KNOWN_KITTY_SAMPLES, CONFIRM_KNOWN_KITTY_SAMPLES, 256}) {
+      var baseline = preparedScore(current, seen, keep, auction, count);
+      var trial = preparedScore(current, seen, change, auction, count);
+      double sum = 0;
+      double squares = 0;
+      for (int i = 0; i < count; i++) {
+        double delta = trial.settlements().get(i) - baseline.settlements().get(i);
+        sum += delta;
+        squares += delta * delta;
+      }
+      double mean = sum / count;
+      double margin = 2 * Math.sqrt(Math.max(0, squares - sum * mean) / (count * (count - 1.0)));
+      if (mean + margin <= 0) {
+        return false;
+      }
+      if (count >= CONFIRM_KNOWN_KITTY_SAMPLES && mean - margin > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private PreparedScore preparedScore(Bid current, List<Card> seen, PreparationPlan preparation,
       List<PublicBid> auction, int samples) {
     List<Card> kept = DeckFactory.create().stream().filter(seen::contains)
@@ -140,6 +165,7 @@ public final class BidExpectedScoreEvaluator {
       Random random = new Random(seenKey.hashCode());
       int total = 0;
       int wins = 0;
+      var settlements = new ArrayList<Integer>(samples);
       for (int sample = 0; sample < samples; sample++) {
         List<Card> opponents = new ArrayList<>(unseen);
         Collections.shuffle(opponents, random);
@@ -148,9 +174,10 @@ public final class BidExpectedScoreEvaluator {
         round.takeKitty(DECLARER);
         var outcome = playPrepared(round, preparation);
         total += outcome.settlement();
+        settlements.add(outcome.settlement());
         wins += outcome.succeeded() ? 1 : 0;
       }
-      return new PreparedScore((double) total / samples, wins);
+      return new PreparedScore((double) total / samples, wins, List.copyOf(settlements));
     });
   }
 

@@ -98,13 +98,18 @@ public final class PreparationPlanner {
     }
     var high = highPreparation(view, awarded, history);
     if (high.isPresent()) {
-      return high.get();
+      var proposal = high.get();
+      if (!isSeventeenNoTrumpChange(context.current(), proposal.contract())) {
+        return proposal;
+      }
+      var keep = currentPlan(context, view.hand(), proposal.discarded(), view.auction());
+      return confirmsSeventeenNoTrump(context, view.hand(), keep, proposal, view.auction())
+          ? proposal : keep;
     }
     var initialBuried = discard.choose(view);
     var initial = evaluate(retained(view.hand(), initialBuried), initialBuried);
-    PreparationPlan best = plan(context.current(), initialBuried, friend.choose(
-        new FriendView(context.self(), context.current(), initial.kept(), initialBuried,
-            context.history())));
+    var keep = currentPlan(context, view.hand(), initialBuried, List.of());
+    PreparationPlan best = keep;
     double bestValue = value(initial, initial.assessment(context.current().trump()),
         context.current(), context.current());
     for (Trump trump : Trump.values()) {
@@ -118,8 +123,11 @@ public final class PreparationPlanner {
         var candidate = candidate(context, hand, hand.assessment(trump));
         if (candidate.isPresent() && candidate.get().value() > bestValue) {
           var selected = candidate.get();
-          best = plan(selected.bid(), buried, selected.friend());
-          bestValue = selected.value();
+          var proposal = plan(selected.bid(), buried, selected.friend());
+          if (acceptsDiscardProposal(context, view, keep, proposal)) {
+            best = proposal;
+            bestValue = selected.value();
+          }
         }
       }
     }
@@ -155,7 +163,8 @@ public final class PreparationPlanner {
     }
     var route = highRoute(kept, awarded);
     if (route.isPresent()) {
-      return retainedContract(route.get(), kept, awarded, view.contract(), GamePhase.FRIEND);
+      var proposed = retainedContract(route.get(), kept, awarded, view.contract(), GamePhase.FRIEND);
+      return confirmFinalContract(context, view, proposed);
     }
     var hand = evaluate(view.hand(), view.discardedCards());
     Bid best = view.contract();
@@ -167,7 +176,61 @@ public final class PreparationPlanner {
         bestValue = candidate.get().value();
       }
     }
-    return best;
+    return confirmFinalContract(context, view, best);
+  }
+
+  private boolean acceptsDiscardProposal(ContractContext context, DiscardView view,
+      PreparationPlan keep, PreparationPlan proposal) {
+    if (!isSeventeenNoTrumpChange(context.current(), proposal.contract())) {
+      return true;
+    }
+    // 같은 열 장을 들고도 16기루다가 앞서면 버리기 단계에서 미리 전환하지 않습니다.
+    var keepWithSameDiscard = currentPlan(context, view.hand(), proposal.discarded(), view.auction());
+    return confirmsSeventeenNoTrump(context, view.hand(), keepWithSameDiscard, proposal,
+        view.auction()) && (keepWithSameDiscard.equals(keep)
+            || confirmsSeventeenNoTrump(context, view.hand(), keep, proposal, view.auction()));
+  }
+
+  private Bid confirmFinalContract(ContractContext context, FriendView view, Bid proposed) {
+    if (!isSeventeenNoTrumpChange(context.current(), proposed)) {
+      return proposed;
+    }
+    var seen = new ArrayList<>(view.hand());
+    seen.addAll(view.discardedCards());
+    var keep = currentPlan(context, seen, view.discardedCards(), view.auction());
+    var selection = friend.choose(new FriendView(view.self(), proposed, view.hand(),
+        view.discardedCards(), context.history(), view.auction()));
+    var change = plan(proposed, view.discardedCards(), selection);
+    return confirmsSeventeenNoTrump(context, seen, keep, change, view.auction())
+        ? proposed : context.current();
+  }
+
+  private PreparationPlan currentPlan(ContractContext context, List<Card> seen, List<Card> buried,
+      List<PublicBid> auction) {
+    var selection = friend.choose(new FriendView(context.self(), context.current(),
+        retained(seen, buried), buried, context.history(), auction));
+    return plan(context.current(), buried, selection);
+  }
+
+  private boolean confirmsSeventeenNoTrump(ContractContext context, List<Card> seen,
+      PreparationPlan keep, PreparationPlan change, List<PublicBid> auction) {
+    if (!isSeventeenNoTrumpChange(context.current(), change.contract())) {
+      return true;
+    }
+    int seats = GameMode.PLAYING_PLAYER_COUNT;
+    int self = context.self().index();
+    // 평가 대국은 주공이 0번인 오마입니다. 공개 입찰도 같은 자리 순서로 변환합니다.
+    var publicBids = self < seats && auction.stream().allMatch(entry -> entry.seat().index() < seats)
+        ? auction.stream().map(entry -> new PublicBid(
+            new Seat(Math.floorMod(entry.seat().index() - self, seats)), entry.action())).toList()
+        : List.<PublicBid>of();
+    return expectedScores.clearlyImprovesPreparedContract(context.current(), seen, keep, change,
+        publicBids);
+  }
+
+  private static boolean isSeventeenNoTrumpChange(Bid current, Bid proposed) {
+    return current.points() == 16 && current.trump() != Trump.NO_TRUMP
+        && proposed.points() == 17 && proposed.trump() == Trump.NO_TRUMP;
   }
 
   public static Optional<Bid> beforePublicBid(BiddingHand hand, Bid awarded, Bid current,

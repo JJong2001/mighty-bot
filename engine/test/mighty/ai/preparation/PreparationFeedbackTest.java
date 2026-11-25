@@ -17,6 +17,16 @@ import org.junit.jupiter.params.provider.*;
 
 class PreparationFeedbackTest {
 
+  @Test
+  void keepsSixteenClubsWhenCloseNoTrumpEstimateDoesNotHoldAcrossMoreDeals() {
+    var current = new Bid(16, Trump.CLUB);
+    var kept = cards("SQ SJ HA C2 C7 C8 C9 CQ CK JK");
+    var buried = cards("D5 D6 S10");
+    var view = new FriendView(new Seat(0), current, kept, buried);
+    assertTrue(assess("SQ SJ HA C2 C7 C8 C9 CQ CK JK", Trump.NO_TRUMP).canCompete());
+    assertEquals(current, new PreparationPlanner().finalContract(view, current));
+  }
+
   @ParameterizedTest
   @CsvSource({
       "SA S3 S4 S6 SJ DA DK C6 CK H2 H4 H6 H8, C6 CK SJ, C6 CK DA",
