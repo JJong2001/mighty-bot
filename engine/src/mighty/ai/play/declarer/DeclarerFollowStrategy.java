@@ -33,7 +33,7 @@ final class DeclarerFollowStrategy {
     if (signal.isPresent()) {
       return signal.get();
     }
-    var spread = NoTrumpOperations.followAfterSideTops(position);
+    var spread = SpreadNoTrumpPlay.followAfterSideTops(position);
     if (spread.isPresent()) {
       return spread.get();
     }

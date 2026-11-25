@@ -5,7 +5,7 @@ plugins {
 sourceSets {
     main.java {
         srcDirs = ['.']
-        include 'BotBridge.java', 'BridgeRecords.java', 'BridgeHttpServer.java'
+        include 'BotBridge.java', 'BridgeRecords.java', 'BridgeHttpServer.java', 'BridgeBuildIdentity.java'
     }
     parity {
         java.srcDirs = ['tests']

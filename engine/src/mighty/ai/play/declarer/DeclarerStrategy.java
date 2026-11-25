@@ -28,7 +28,7 @@ public final class DeclarerStrategy implements RoleStrategy {
     if (support.isPresent() || view.contract().points() > 17) {
       return support;
     }
-    return NoTrumpOperations.cashSideTopsBeforeFriend(position);
+    return SpreadNoTrumpPlay.cashSideTopsBeforeFriend(position);
   }
 
   @Override

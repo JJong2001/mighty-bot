@@ -3,6 +3,7 @@ package mighty.application.round;
 import java.util.List;
 import mighty.ai.preparation.FriendPolicy;
 import mighty.ai.preparation.PreparationPlanner;
+import mighty.ai.preparation.PreparationDeclarations;
 import mighty.game.bidding.Bid;
 import mighty.game.friend.FriendSelection;
 import mighty.game.round.RoundState;
@@ -45,7 +46,8 @@ public final class RoundPreparation {
     var history = round.contractHistory();
     var view = round.discardView(actor);
     var plan = planner.choose(view, history.get(0), history);
-    for (var bid : PreparationPlanner.discardDeclarations(view, history.get(0), history, plan)) {
+    for (var bid : PreparationDeclarations.discardDeclarations(view, history.get(0), history,
+        plan)) {
       revise.apply(bid);
     }
     submit.apply(plan.discarded());

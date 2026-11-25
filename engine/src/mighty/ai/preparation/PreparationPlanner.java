@@ -1,6 +1,10 @@
 package mighty.ai.preparation;
 
 import java.util.*;
+
+import static mighty.ai.preparation.PreparationDeclarations.highRoute;
+import static mighty.ai.preparation.PreparationDeclarations.declarationSequence;
+
 import mighty.ai.bidding.*;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.SpreadNoTrumpPlan;
@@ -89,7 +93,8 @@ public final class PreparationPlanner {
           }
           // 납치용 물패를 살린 뒤 프렌드만 바꾸는 대안도 같은 공약에서 운영할 수 있습니다.
           var selection = support.get().callsNextHonor()
-              ? friend.choose(new FriendView(view.self(), view.contract(), retained(view.hand(), buried),
+              ? friend.choose(
+              new FriendView(view.self(), view.contract(), retained(view.hand(), buried),
                   buried, history, view.auction()))
               : new mighty.game.friend.CardFriend(support.get().called());
           return plan(view.contract(), buried, selection);
@@ -103,8 +108,7 @@ public final class PreparationPlanner {
     var initialBuried = discard.choose(view);
     var initial = evaluate(retained(view.hand(), initialBuried), initialBuried);
     PreparationPlan best = plan(context.current(), initialBuried, friend.choose(
-        new FriendView(context.self(), context.current(), initial.kept(), initialBuried,
-            context.history())));
+        context.friendView(context.current(), initial.kept(), initialBuried)));
     double bestValue = value(initial, initial.assessment(context.current().trump()),
         context.current(), context.current());
     for (Trump trump : Trump.values()) {
@@ -185,17 +189,6 @@ public final class PreparationPlanner {
             ? new Bid(18, plan.suited()) : current);
   }
 
-  private static Optional<HighNoTrumpPlan> highRoute(BiddingHand hand,
-      Bid awarded) {
-    if (awarded.points() != 16 && awarded.points() != 17) {
-      return Optional.empty();
-    }
-    return HighNoTrumpPlan.find(hand)
-        .filter(plan -> awarded.trump() == Trump.NO_TRUMP
-            || (awarded.points() == 16 && awarded.trump() == plan.suited()
-            && plan.hasTwoSources(hand)));
-  }
-
   private static Bid retainedContract(HighNoTrumpPlan plan, BiddingHand hand,
       Bid awarded, Bid current, GamePhase phase) {
     if (current.trump() != Trump.NO_TRUMP && current.points() > 16 && current.points() < 20) {
@@ -228,7 +221,7 @@ public final class PreparationPlanner {
         buried = List.copyOf(outside);
       } else {
         var preserved = discard.ranked(view, 286).stream().filter(choice ->
-            highRoute(BiddingHand.from(retained(view.hand(), choice)), awarded).isPresent())
+                highRoute(BiddingHand.from(retained(view.hand(), choice)), awarded).isPresent())
             .findFirst();
         if (preserved.isEmpty()) {
           return Optional.empty();
@@ -284,7 +277,7 @@ public final class PreparationPlanner {
       // 실제 바닥으로 풀노 운영이 완성된 경우의 기존 준비 경로는 별도로 유지합니다.
       if (supports(assessment, full) && assessment.openingPoints() == Bid.MAX_POINTS
           && ContractChangeRules.canChange(context.awarded(), context.current(), full,
-              context.phase())) {
+          context.phase())) {
         return prepare(context, hand, full);
       }
     }
@@ -340,7 +333,7 @@ public final class PreparationPlanner {
   private List<EvaluatedHand> handsFor(ContractContext context, List<Card> seen,
       Optional<List<Card>> fixedDiscards, Bid bid) {
     var discardChoices = fixedDiscards.map(List::of).orElseGet(() -> discard.ranked(
-        new DiscardView(context.self(), bid, seen), bid.trump() == Trump.NO_TRUMP ? 8 : 1));
+        context.discardView(bid, seen), bid.trump() == Trump.NO_TRUMP ? 8 : 1));
     return discardChoices.stream().map(buried -> evaluate(retained(seen, buried), buried)).toList();
   }
 
@@ -350,8 +343,7 @@ public final class PreparationPlanner {
   }
 
   private PreparationPlan prepare(ContractContext context, EvaluatedHand hand, Bid bid) {
-    var selection = friend.choose(new FriendView(context.self(), bid, hand.kept(), hand.buried(),
-        context.history()));
+    var selection = friend.choose(context.friendView(bid, hand.kept(), hand.buried()));
     return plan(bid, hand.buried(), selection);
   }
 
@@ -373,7 +365,7 @@ public final class PreparationPlanner {
         continue;
       }
       var selection = friend.choose(
-          new FriendView(context.self(), bid, hand.kept(), hand.buried(), context.history()));
+          context.friendView(bid, hand.kept(), hand.buried()));
       if (!returnMatches(context.current(), trump, selection, context.history())) {
         continue;
       }
@@ -406,59 +398,6 @@ public final class PreparationPlanner {
   public ContractResolution resolveContract(FriendView view, Bid awarded, List<Bid> history) {
     Bid selected = finalContract(view, awarded, history);
     return new ContractResolution(selected, declarationSequence(view, awarded, history, selected));
-  }
-
-  /** 실제 판과 가상 대국 모두 프렌드가 읽을 수 있는 같은 순서로 공약을 공개합니다. */
-  public static List<Bid> discardDeclarations(DiscardView view, Bid awarded, List<Bid> history,
-      PreparationPlan plan) {
-    if (plan.contract().equals(new Bid(20, Trump.NO_TRUMP))
-        && (awarded.points() == 16 || awarded.points() == 17)) {
-      var kept = retained(view.hand(), plan.discarded());
-      var hand = BiddingHand.from(kept);
-      if (highRoute(hand, awarded).filter(route -> route.canRun(hand)).isPresent()) {
-        var exposed = new FriendView(view.self(), view.contract(), kept, plan.discarded(), history,
-            view.auction());
-        return declarationSequence(exposed, awarded, history, plan.contract());
-      }
-    }
-    return plan.contract().equals(view.contract()) ? List.of() : List.of(plan.contract());
-  }
-
-  private static List<Bid> declarationSequence(FriendView view, Bid awarded, List<Bid> history,
-      Bid selected) {
-    if (selected.points() == Bid.MAX_POINTS
-        && selected.trump() == Trump.NO_TRUMP) {
-      BiddingHand hand = BiddingHand.from(view.hand());
-      var route = highRoute(hand, awarded).filter(plan -> plan.canRun(hand));
-      if (route.isPresent()) {
-        var signals = new ArrayList<Bid>();
-        if (hand.holding(Suit.SPADE).size() >= 5) {
-          signals.add(new Bid(20, Trump.SPADE));
-        }
-        signals.add(new Bid(20, route.get().suited()));
-        signals.add(selected);
-        if (history.size() >= signals.size() && history.subList(history.size() - signals.size(),
-            history.size()).equals(signals)) {
-          return List.of();
-        }
-        return List.copyOf(signals);
-      }
-      var selection = new RuleFriendPolicy().choose(new FriendView(
-          view.self(), selected, view.hand(), view.discardedCards(), history));
-      var opening = mighty.ai.planning.NoTrumpOpeningPlanner.plan(hand, view.discardedCards(),
-          selection, selected.points(), history);
-      Suit primary = opening.returnSuit().orElseGet(
-          () -> mighty.ai.planning.NoTrumpPlanner.signallingSuit(hand));
-      Trump signal = Arrays.stream(Trump.values()).filter(t -> t.matches(primary)).findFirst()
-          .orElseThrow();
-      Bid signalBid = new Bid(Bid.MAX_POINTS, signal);
-      if (!PublicContractHistory.latestSuit(history).filter(primary::equals).isPresent()
-          && ContractChangeRules.canChange(awarded, view.contract(), signalBid, GamePhase.FRIEND)
-          && ContractChangeRules.canChange(awarded, signalBid, selected, GamePhase.FRIEND)) {
-        return List.of(signalBid, selected);
-      }
-    }
-    return selected.equals(view.contract()) ? List.of() : List.of(selected);
   }
 
   /**
@@ -512,6 +451,16 @@ public final class PreparationPlanner {
 
   private record ContractContext(Seat self, Bid awarded, Bid current, List<Bid> history,
                                  GamePhase phase) {
+
+    // 후보 비교에서 쓰던 입찰 없는 관측 범위를 명시적으로 유지합니다.
+    // 실제 입찰 정보를 반영하는 정책 변경은 구조 정리와 별도로 검증해야 합니다.
+    DiscardView discardView(Bid bid, List<Card> cards) {
+      return new DiscardView(self, bid, cards, List.of());
+    }
+
+    FriendView friendView(Bid bid, List<Card> kept, List<Card> buried) {
+      return new FriendView(self, bid, kept, buried, history, List.of());
+    }
 
   }
 

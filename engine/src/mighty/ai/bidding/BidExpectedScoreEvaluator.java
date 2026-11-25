@@ -2,38 +2,25 @@ package mighty.ai.bidding;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.IntStream;
-import mighty.ai.play.RulePlayPolicy;
+import mighty.ai.evaluation.PreparedRoundEvaluator;
+
+import static mighty.ai.evaluation.PreparedRoundEvaluator.createRound;
+import static mighty.ai.evaluation.PreparedRoundEvaluator.playPrepared;
+
 import mighty.ai.preparation.PreparationPlan;
 import mighty.ai.preparation.PreparationPlanner;
-import mighty.ai.preparation.RuleDiscardPolicy;
-import mighty.ai.preparation.RuleFriendPolicy;
-import mighty.application.round.RoundService;
-import mighty.game.GameMode;
-import mighty.game.PlayOrder;
 import mighty.game.Seat;
-import mighty.game.TableLayout;
 import mighty.game.bidding.Bid;
-import mighty.game.bidding.BiddingResult;
-import mighty.game.bidding.PublicBid;
 import mighty.game.deal.DeckFactory;
-import mighty.game.friend.FriendSelection;
-import mighty.game.friend.SpecialFriend;
-import mighty.game.round.RoundResult;
-import mighty.game.round.RoundSettlement;
 import mighty.game.round.RoundState;
 import mighty.model.Card;
 
 /**
- * 후보 공약의 명목 정산 점수를 규칙 봇의 한 판 운영으로 추정합니다.
- * 같은 손패에서 공약 후보에 같은 가상 배분을 사용합니다.
+ * 후보 공약의 명목 정산 점수를 규칙 봇의 한 판 운영으로 추정합니다. 같은 손패에서 공약 후보에 같은 가상 배분을 사용합니다.
  */
 public final class BidExpectedScoreEvaluator {
 
@@ -43,27 +30,13 @@ public final class BidExpectedScoreEvaluator {
   // 첫 바닥 10묶음으로 계산한 평균 차의 95% 구간에 쓰는 t 임계값입니다.
   private static final double INITIAL_BIDDING_T_CRITICAL = 2.262;
   private static final Map<EvaluationKey, List<Integer>> CACHE = new ConcurrentHashMap<>();
-  private static final int KNOWN_KITTY_SAMPLES = 32;
-  private static final int CONFIRM_KNOWN_KITTY_SAMPLES = 128;
-  private static final Map<PreparedEvaluationKey, PreparedScore> PREPARED_CACHE = new ConcurrentHashMap<>();
-  private static final List<Seat> SEATS = IntStream.range(0, GameMode.PLAYING_PLAYER_COUNT)
-      .mapToObj(Seat::new).toList();
-  private static final PlayOrder ORDER = PlayOrder.from(
-      new TableLayout(GameMode.FIVE_PLAYER, SEATS), new HashSet<>(SEATS));
-  private static final Seat DECLARER = SEATS.get(0);
-  private static final RoundService ROUND_SERVICE = new RoundService(
-      new RuleDiscardPolicy(), new RuleFriendPolicy(), new RulePlayPolicy());
+  private static final PreparedRoundEvaluator PREPARED = new PreparedRoundEvaluator();
+  private static final Seat DECLARER = new Seat(0);
   private static final PreparationPlanner PREPARATION_PLANNER = new PreparationPlanner();
 
-  public record PreparedScore(double mean, int wins) {}
+  private record EvaluationKey(String hand, Bid contract, int dealsPerKitty) {
 
-  private record PreparedOutcome(int settlement, boolean succeeded) {}
-
-  private record EvaluationKey(String hand, Bid contract, int dealsPerKitty) {}
-
-  private record PreparedEvaluationKey(Bid current, List<Card> kept, Bid selected,
-                                       FriendSelection friend, Set<Card> discarded,
-                                       List<PublicBid> auction, int samples) {}
+  }
 
   record ScoreSamples(List<Integer> kittySettlements, int dealsPerKitty) {
 
@@ -113,45 +86,11 @@ public final class BidExpectedScoreEvaluator {
    * 실제로 본 13장을 고정하고, 버리기와 프렌드가 정해진 두 공약에 같은 상대 배분을 적용합니다.
    */
   public double expectedPreparedScore(Bid current, List<Card> seen, PreparationPlan preparation) {
-    return preparedScore(current, seen, preparation, List.of()).mean();
-  }
-
-  public PreparedScore preparedScore(Bid current, List<Card> seen, PreparationPlan preparation,
-      List<PublicBid> auction) {
-    return preparedScore(current, seen, preparation, auction, KNOWN_KITTY_SAMPLES);
+    return PREPARED.evaluate(current, seen, preparation, List.of()).mean();
   }
 
   public double confirmedPreparedScore(Bid current, List<Card> seen, PreparationPlan preparation) {
-    return preparedScore(current, seen, preparation, List.of(), CONFIRM_KNOWN_KITTY_SAMPLES).mean();
-  }
-
-  private PreparedScore preparedScore(Bid current, List<Card> seen, PreparationPlan preparation,
-      List<PublicBid> auction, int samples) {
-    List<Card> kept = DeckFactory.create().stream().filter(seen::contains)
-        .filter(card -> !preparation.discarded().contains(card)).toList();
-    var key = new PreparedEvaluationKey(current, kept, preparation.contract(), preparation.friend(),
-        Set.copyOf(preparation.discarded()), List.copyOf(auction), samples);
-    if (PREPARED_CACHE.size() > 512) {
-      PREPARED_CACHE.clear();
-    }
-    return PREPARED_CACHE.computeIfAbsent(key, ignored -> {
-      List<Card> unseen = DeckFactory.create().stream().filter(card -> !seen.contains(card)).toList();
-      String seenKey = seen.stream().map(Card::toCode).sorted().toList().toString();
-      Random random = new Random(seenKey.hashCode());
-      int total = 0;
-      int wins = 0;
-      for (int sample = 0; sample < samples; sample++) {
-        List<Card> opponents = new ArrayList<>(unseen);
-        Collections.shuffle(opponents, random);
-        RoundState round = createRound(kept, current, preparation.discarded(), opponents,
-            key.auction());
-        round.takeKitty(DECLARER);
-        var outcome = playPrepared(round, preparation);
-        total += outcome.settlement();
-        wins += outcome.succeeded() ? 1 : 0;
-      }
-      return new PreparedScore((double) total / samples, wins);
-    });
+    return PREPARED.confirmedMean(current, seen, preparation);
   }
 
   private static ScoreSamples samples(BiddingHand hand, Bid contract, int kittyCount,
@@ -223,33 +162,4 @@ public final class BidExpectedScoreEvaluator {
     return totalSettlement;
   }
 
-  private static PreparedOutcome playPrepared(RoundState round, PreparationPlan preparation) {
-    var history = round.contractHistory();
-    for (var bid : PreparationPlanner.discardDeclarations(round.discardView(DECLARER),
-        history.get(0), history, preparation)) {
-      round.reviseContract(DECLARER, bid);
-    }
-    round.discard(DECLARER, preparation.discarded());
-    round.chooseFriend(DECLARER, preparation.friend());
-    RoundResult result = ROUND_SERVICE.playToEnd(round);
-    boolean declaredSolo = preparation.friend() == SpecialFriend.NONE;
-    return new PreparedOutcome(RoundSettlement.nominal(result, declaredSolo).get(DECLARER),
-        result.succeeded());
-  }
-
-  private static RoundState createRound(List<Card> own, Bid contract, List<Card> kitty,
-      List<Card> opponentPool) {
-    return createRound(own, contract, kitty, opponentPool, List.of());
-  }
-
-  private static RoundState createRound(List<Card> own, Bid contract, List<Card> kitty,
-      List<Card> opponentPool, List<PublicBid> auction) {
-    Map<Seat, List<Card>> hands = new HashMap<>();
-    hands.put(DECLARER, own);
-    for (int index = 1; index < SEATS.size(); index++) {
-      int start = (index - 1) * 10;
-      hands.put(SEATS.get(index), List.copyOf(opponentPool.subList(start, start + 10)));
-    }
-    return RoundState.start(ORDER, new BiddingResult(DECLARER, contract), hands, kitty, auction);
-  }
 }

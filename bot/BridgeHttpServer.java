@@ -40,7 +40,8 @@ final class BridgeHttpServer {
       try {
         if (path.equals("/health") && method.equals("GET")) {
           response = Map.of("ok", true, "service", "mighty-bot-bridge", "version", 1,
-              "engineVersion", ApplicationInfo.VERSION, "policy", "rule");
+              "engineVersion", ApplicationInfo.VERSION, "policy", "rule",
+              "buildSha256", BridgeBuildIdentity.sha256());
         } else if (method.equals("POST") && (path.equals("/act") || path.equals("/record"))) {
           response = post(exchange, records, path);
         } else {
