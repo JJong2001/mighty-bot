@@ -16,7 +16,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
 /**
- * 수정 전 JAR에서 기록한 동일 배분의 평균 정산과 성공 횟수를 비교합니다.
+ * 고정 배분의 평균 정산과 성공 횟수를 비교합니다. 전략 변경 때는 검토한 결과만 기준에 반영합니다.
  */
 class PreparedEvaluationCompatibilityTest {
 

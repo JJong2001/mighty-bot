@@ -42,7 +42,10 @@ final class FriendResources {
     if (facts.isSuitTop(card)) {
       boolean entry = view.hand().stream().anyMatch(c -> c instanceof Joker
           || c.equals(Rules.mighty(view.contract().trump())));
-      if (entry) {
+      boolean canFollowLater = held.size() > 1
+          && facts.cards().trumps().remainingHand(view.context().declarer()) > held.size()
+          && !facts.cards().isVoid(view.context().declarer(), card.suit());
+      if (entry || canFollowLater) {
         return true;
       }
       int possibleTrump = facts.cards().trumps().outside().size();

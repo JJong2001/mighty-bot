@@ -51,7 +51,10 @@ final class FriendSideCash {
             return false;
           }
           // 공개 직후에는 간칠 수 있는 자리들이 따를 장수가 남아 있을 때 한 구 먼저 돕습니다.
-          return trumpRounds >= 2 || onReveal && facts.cards().outsideCount(suit)
+          boolean alreadyLed = history.stream().anyMatch(t ->
+              Rules.conditionsFor(view.contract().trump(), t.number(), t.cards().get(0).action())
+                  .leadSuit() == suit);
+          return trumpRounds >= 2 || onReveal && !alreadyLed && facts.cards().outsideCount(suit)
               >= possibleRuffers.size();
         }).toList();
     if (tops.isEmpty()) {
@@ -72,7 +75,7 @@ final class FriendSideCash {
     return view.friendSelection() == SpecialFriend.FIRST_TRICK && trick.number().isFirst()
         || view.friendSelection() instanceof CardFriend friend
         && trick.cards().stream().anyMatch(play -> play.seat().equals(view.self())
-            && play.action().card().equals(friend.card()));
+        && play.action().card().equals(friend.card()));
   }
 
   static boolean preservesSpecialCards(Suit suit, View view, PlayFacts facts) {

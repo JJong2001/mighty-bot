@@ -27,7 +27,13 @@ final class FriendLeadStrategy {
     }
     List<Action> ordinary = PlaySupport.ordinary(legal, view).stream()
         .filter(a -> !((StandardPlay) a).call()).toList();
-    List<Action> jokers = legal.stream().filter(JokerLead.class::isInstance).toList();
+    List<Action> jokers = legal.stream().filter(JokerLead.class::isInstance)
+        .filter(a -> !view.contract().trump().matches(((JokerLead) a).declaredSuit())
+            || new TrumpControl(view, facts).needsSpecialSweep()).toList();
+    var cash = FriendSideCash.choose(view, facts, ordinary);
+    if (cash.isPresent()) {
+      return cash.get();
+    }
     var transition = FriendReturnTransition.choose(view, facts, ordinary);
     if (transition.isPresent()) {
       return transition.get();
@@ -35,10 +41,6 @@ final class FriendLeadStrategy {
     var requested = NoTrumpReturn.choose(view, facts, ordinary);
     if (requested.isPresent()) {
       return requested.get();
-    }
-    var cash = FriendSideCash.choose(view, facts, ordinary);
-    if (cash.isPresent()) {
-      return cash.get();
     }
     var sideRequest = FriendSupportIntent.sideRequest(view);
     if (FriendSupportIntent.preserveJoker(view, facts) && sideRequest.isPresent()) {
@@ -79,7 +81,7 @@ final class FriendLeadStrategy {
           && trumps.stream().noneMatch(action -> facts.isSuitTop(action.card()));
       if ((mightyOnTrump || uncertainReturn) && !alreadyCashedTrump && !jokers.isEmpty()
           && !view.hand().contains(Rules.mighty(view.contract().trump()))
-          && JokerSuitPlan.enemiesMayHoldTrump(view, facts)) {
+          && new TrumpControl(view, facts).needsSpecialSweep()) {
         return decision(jokers.stream()
             .filter(a -> view.contract().trump().matches(((JokerLead) a).declaredSuit()))
             .findFirst().orElseThrow(), "일반 기루 탑카로 연결할 수 없어 조커로 외부 상위를 소모시키고 주공에게 연결합니다.");

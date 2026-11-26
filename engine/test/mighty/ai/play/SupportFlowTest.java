@@ -267,7 +267,7 @@ class SupportFlowTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"DK", "CA"})
+  @CsvSource({"DK"})
   void supportsUnusableSidePointsWithoutWaitingForFixedTrickNumber(String point) {
     var observation = view(1, Trump.HEART, point + " S2 S3 S4 S5 D2 D3 C2 C3 C4",
         new CardFriend(card("C2")), 1, List.of(), List.of(play(0, "HA")));
@@ -370,4 +370,12 @@ class SupportFlowTest {
         1, List.of(first), List.of(play(0, "S2")));
     assertEquals(card("SA"), policy.choose(observation).card());
   }
+
+  @Test
+  void retainsUsableSideTopWithPaddingForLaterSupport() {
+    var observation = view(1, Trump.HEART, "CA S2 S3 S4 S5 D2 D3 C2 C3 C4",
+        new CardFriend(card("C2")), 1, List.of(), List.of(play(0, "HA")));
+    assertNotEquals(card("CA"), policy.choose(observation).card());
+  }
+
 }

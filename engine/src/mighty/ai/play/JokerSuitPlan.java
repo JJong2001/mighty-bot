@@ -19,6 +19,12 @@ public final class JokerSuitPlan {
 
   public static Action choose(List<Action> jokers, View view, PlayFacts facts) {
     if (view.role() == mighty.game.Role.FRIEND) {
+      var useful = jokers.stream()
+          .filter(a -> !view.contract().trump().matches(((JokerLead) a).declaredSuit())
+              || new TrumpControl(view, facts).needsSpecialSweep()).toList();
+      if (!useful.isEmpty()) {
+        jokers = useful;
+      }
       if (FriendSupportIntent.mightyRemovalRoute(view)) {
         var otherSuits = jokers.stream().filter(action -> ((JokerLead) action).declaredSuit()
             != mighty.game.rule.Rules.mighty(view.contract().trump()).suit()).toList();

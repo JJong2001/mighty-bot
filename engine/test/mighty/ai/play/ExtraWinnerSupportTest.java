@@ -22,6 +22,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class ExtraWinnerSupportTest {
+
   private static final Trump NT = Trump.NO_TRUMP;
   private static final CardFriend FRIEND = new CardFriend(card("SA"));
 
@@ -30,12 +31,13 @@ class ExtraWinnerSupportTest {
     var heart = new Bid(v.contract().points(), Trump.HEART);
     var ctx = new Context(c.playOrder(), c.declarer(), c.friendStatus(), c.history(),
         List.of(heart, v.contract()), List.of(new PublicBid(c.declarer(), new BidOffer(heart))));
-    return new View(v.self(), v.privateInfo(), v.role(), v.contract(), v.friendSelection(), ctx, v.trick());
+    return new View(v.self(), v.privateInfo(), v.role(), v.contract(), v.friendSelection(), ctx,
+        v.trick());
   }
 
   @ParameterizedTest
-  @CsvSource({"D3, DA", "C8, H3"})
-  void suitedFriendCanCashSideTopBeforeTwoTrumpRoundsUnlessThereIsARuffRisk(
+  @CsvSource({"D3, H3", "C8, H3"})
+  void suitedFriendReturnsTrumpRatherThanRepeatingTheOpeningSuit(
       String oppositionPlay, String expected) {
     var suit = Trump.HEART;
     var won = row(1, suit, p(0, "D2"), p(1, "SA"), p(2, oppositionPlay), p(3, "D6"), p(4, "D7"));
@@ -132,7 +134,7 @@ class ExtraWinnerSupportTest {
     var fourth = row(4, NT, extra.get(0), extra.get(1), extra.get(2), extra.get(3), p(0, "S4"));
     var returning = withReturn(view(1, 0, NT, 20, "DA H8 H4 S3 S2 H3", "",
         FRIEND, friend, List.of(first, second, third, fourth), List.of()));
-    assertEquals(card("H8"), new RulePlayPolicy().choose(returning).card());
+    assertEquals(card("DA"), new RulePlayPolicy().choose(returning).card());
   }
 
   @ParameterizedTest

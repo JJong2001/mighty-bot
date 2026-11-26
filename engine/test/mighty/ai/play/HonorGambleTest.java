@@ -26,7 +26,8 @@ class HonorGambleTest {
     var ctx = base.context();
     return new View(base.self(), base.privateInfo(), base.role(), base.contract(),
         base.friendSelection(), new Context(ctx.playOrder(), ctx.declarer(), ctx.friendStatus(),
-        ctx.history(), List.of(new Bid(16, Trump.NO_TRUMP), base.contract()), auction), base.trick());
+        ctx.history(), List.of(new Bid(16, Trump.NO_TRUMP), base.contract()), auction),
+        base.trick());
   }
 
   private java.util.Optional<Action> candidate(View view) {
@@ -46,7 +47,8 @@ class HonorGambleTest {
   @Test
   void recommendsInsuredHonorsInDifficultConvertedContract() {
     assertChosenHonor("SA SQ HK D6 C3 C4 C7 DQ C6 D8", "SA");
-    assertChosenHonor("SA SQ HK S9 S3 C5 C4 C10 CJ DA", "HK");
+    // 새 지원 정책에서는 24개 배분 중 K의 추가 성공이 한 번뿐이라 기존 +2 확인 기준을 통과하지 않습니다.
+    assertChosenHonor("SA SQ HK S9 S3 C5 C4 C10 CJ DA", "SA");
     assertChosenHonor("SA SQ HQ D5 S7 C3 C5 S4 CQ S5", "HQ");
     assertEquals(card("SA"), new RulePlayPolicy().choose(opening("HK S7", List.of())).card());
   }
@@ -77,15 +79,17 @@ class HonorGambleTest {
   }
 
   @Test
-  void triesKingWhenLowTrumpYieldsTheLeadAndJokerIsStillExposedToMighty() {
+  void keepsLowTrumpWhenKingScreeningEvidenceIsInsufficient() {
     var first = row(1, Trump.CLUB, p(1, "D7"), p(2, "DJ"), p(3, "DA"), p(4, "D5"), p(0, "D4"));
     var position = view(1, 1, Trump.CLUB, 15, "JK CQ CK S4 C4 C9 S10 S9 S2", "H3 D6 H8",
         new CardFriend(card("SA")), UnrevealedFriend.INSTANCE, List.of(first),
         List.of(p(3, "CJ"), p(4, "C3"), p(0, "C7")));
     var policy = new RulePlayPolicy();
     assertEquals(card("C4"), policy.usualDecision(position).action().card());
-    assertEquals(card("CK"), policy.choose(position).card());
+    // 후속 운영 수정 후 24개 배분은 물패 6승, K 7승으로 시도 채택 기준에 못 미칩니다.
+    assertEquals(card("C4"), policy.choose(position).card());
   }
+
   @Test
   void confirmedSuccessesMustAlsoPayForLossesAcrossTheSameDeals() {
     var costlyLosses = new HonorGambleTrial.Results();
@@ -102,6 +106,7 @@ class HonorGambleTest {
     assertFalse(noisyGain.confirms());
     assertTrue(reliableGain.confirms());
   }
+
   @Test
   void onlyGamblesWhenTheUsualLineStrugglesAndBothMeasuresImprove() {
     assertFalse(HonorGamble.improvesHardContract(24, 12, 20, 25));
