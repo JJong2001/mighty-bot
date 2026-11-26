@@ -28,6 +28,10 @@ final class FriendLeadStrategy {
     List<Action> ordinary = PlaySupport.ordinary(legal, view).stream()
         .filter(a -> !((StandardPlay) a).call()).toList();
     List<Action> jokers = legal.stream().filter(JokerLead.class::isInstance).toList();
+    var transition = FriendReturnTransition.choose(view, facts, ordinary);
+    if (transition.isPresent()) {
+      return transition.get();
+    }
     var requested = NoTrumpReturn.choose(view, facts, ordinary);
     if (requested.isPresent()) {
       return requested.get();
@@ -103,7 +107,8 @@ final class FriendLeadStrategy {
     }
     List<Action> safeSide = ordinary.stream().filter(a -> !view.contract().trump()
             .matches(((StandardCard) a.card()).suit()))
-        .filter(a -> FriendSideCash.preservesSpecialCards(((StandardCard) a.card()).suit(), view, facts))
+        .filter(a -> FriendSideCash.preservesSpecialCards(((StandardCard) a.card()).suit(), view,
+            facts))
         .filter(a -> sideCanLead(a, view, facts))
         .toList();
     if (!safeSide.isEmpty()) {
