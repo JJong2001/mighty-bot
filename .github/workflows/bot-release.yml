@@ -53,13 +53,26 @@ jobs:
             bot/**/*.gradle
 
       - name: 봇 검사와 배포 파일 생성
+        id: build
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          & ./engine/gradlew.bat -p engine :releaseBot -PbotOnly --no-daemon --console=plain
+          $gradleArgs = @('-p', 'engine', ':releaseBot', '-PbotOnly', '--no-daemon', '--console=plain')
+          $validationNote = ''
+          # 사용자 승인으로 1.0.2에만 기존 검사 불일치를 허용합니다. 이후 태그는 전체 검사를 수행합니다.
+          if ($env:RELEASE_TAG -eq 'v1.0.2') {
+            $gradleArgs += @('-x', ':test')
+            $validationNote = '이 버전은 재생 기대값 32건과 비딩 기대값 2건의 불일치가 남은 상태에서 사용자 요청으로 배포했습니다. 전체 검사 통과 버전이 아닙니다. 테이블탑 연결 검증과 패키징은 수행했습니다.'
+            Write-Warning $validationNote
+          }
+          & ./engine/gradlew.bat @gradleArgs
           if ($LASTEXITCODE -ne 0) { throw '봇 검사 또는 배포 빌드에 실패했습니다.' }
+          "validation_note=$validationNote" >> $env:GITHUB_OUTPUT
 
       - name: 완성된 배포 공개
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
-        run: ./bot/publish_release.ps1 -Version $env:RELEASE_VERSION
+          RELEASE_VALIDATION_NOTE: ${{ steps.build.outputs.validation_note }}
+        run: ./bot/publish_release.ps1 -Version $env:RELEASE_VERSION -ValidationNote $env:RELEASE_VALIDATION_NOTE

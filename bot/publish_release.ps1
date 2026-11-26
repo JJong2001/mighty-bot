@@ -1,4 +1,4 @@
-param([Parameter(Mandatory = $true)][string]$Version)
+param([Parameter(Mandatory = $true)][string]$Version, [string]$ValidationNote = '')
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') { throw '배포 버전 형식이 올바르지 않습니다.' }
 if (!$env:GH_REPO) { throw '배포할 GitHub 저장소를 GH_REPO에 지정하세요.' }
@@ -31,6 +31,7 @@ if ($LASTEXITCODE -eq 0) {
 업데이트 주소가 설정된 기존 실행기는 다음 실행부터 새 엔진을 자동으로 받습니다.
 Java가 포함된 Windows x64용 봇입니다. 맵과 직접 플레이 화면은 포함하지 않습니다.
 "@
+    if ($ValidationNote) { $notes += "`n`n검사 상태`n$ValidationNote" }
     [IO.File]::WriteAllText($notesPath, $notes, [Text.UTF8Encoding]::new($false))
     & gh release create $tag --verify-tag --draft --title "Mighty Bot $Version" --notes-file $notesPath
     if ($LASTEXITCODE -ne 0) { throw 'GitHub 배포 초안 생성 실패' }
