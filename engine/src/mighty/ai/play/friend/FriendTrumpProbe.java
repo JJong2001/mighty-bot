@@ -22,6 +22,10 @@ final class FriendTrumpProbe {
         || !view.contract().trump().matches(card.suit())) {
       return Optional.empty();
     }
+    if (facts.currentWinner().orElseThrow().action().card() instanceof Joker
+        && !facts.allyWinning()) {
+      return Optional.empty();
+    }
     var spent = facts.cards().publicHistory().completedPlays().stream().map(p -> p.action().card())
         .toList();
     var above = Arrays.stream(Rank.values()).filter(rank -> rank.value() > card.rank().value())

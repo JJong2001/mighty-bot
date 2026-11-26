@@ -17,6 +17,45 @@ public final class FriendWinningSupport {
   private FriendWinningSupport() {
   }
 
+  /**
+   * 뒤 야당이 없으면 비탑 일반 카드의 확정 승리를 특수카드보다 먼저 사용합니다.
+   */
+  static Optional<PlayDecision> confirmedOrdinary(View view, PlayFacts facts, List<Action> legal) {
+    if (facts.remainingSeats().stream().anyMatch(seat -> !facts.teams().isAlly(seat))) {
+      return Optional.empty();
+    }
+    return PlaySupport.ordinary(facts.winningActions(), view).stream().filter(legal::contains)
+        .filter(a -> !facts.isSuitTop(a.card()))
+        .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()))
+        .map(a -> new PlayDecision(a, "뒤 야당이 없어 비탑 일반 카드로도 이기므로 마이티와 일반 탑을 함께 남깁니다."));
+  }
+
+  /**
+   * 동료의 낮은 카드가 빠져 자기 연속 승리가 확정되면 선을 받아 남은 승리를 실현합니다.
+   */
+  static Optional<PlayDecision> promotedRun(View view, PlayFacts facts, List<Action> legal) {
+    if (view.trick().isEmpty() || !facts.allyWinning()
+        || !facts.currentWinner().orElseThrow().seat().equals(view.context().declarer())
+        || facts.currentWinner().orElseThrow().action().card().points() != 0
+        || facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
+        || facts.cards().outsideCards().contains(Joker.INSTANCE)
+        || view.contract().trump() != Trump.NO_TRUMP && JokerSuitPlan.enemiesMayHoldTrump(view,
+        facts)) {
+      return Optional.empty();
+    }
+    Suit suit = facts.conditions().leadSuit();
+    long run = view.hand().stream().filter(c -> c instanceof StandardCard s && s.suit() == suit)
+        .filter(facts::isSuitTop).count();
+    if (run < 2) {
+      return Optional.empty();
+    }
+    return PlaySupport.ordinary(facts.winningActions(), view).stream().filter(legal::contains)
+        .filter(a -> ((StandardCard) a.card()).suit() == suit && facts.isSuitTop(a.card()))
+        .filter(a -> facts.isSecured(new PublicPlay(view.self(), a)))
+        .max(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()))
+        .map(a -> new PlayDecision(a, "주공의 낮은 카드 소모로 연속 승리가 확정되어 선을 받아 이어서 사용합니다."));
+  }
+
   public static Optional<PlayDecision> choose(View view, PlayFacts facts, List<Action> legal) {
     if (view.role() != Role.FRIEND || view.trick().isEmpty()) {
       return Optional.empty();
