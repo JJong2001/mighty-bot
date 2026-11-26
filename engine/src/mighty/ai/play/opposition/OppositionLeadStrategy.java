@@ -48,6 +48,18 @@ final class OppositionLeadStrategy {
     if (side.isEmpty()) {
       return new PlayDecision(PlaySupport.cheapest(legal, view), "다른 문양의 합법 리드가 없어 강제로 기루를 냅니다.");
     }
+    if (view.contract().trump() == mighty.model.Trump.NO_TRUMP) {
+      var primary = mighty.ai.play.FriendSupportIntent.disclosedPrimary(view);
+      if (primary.isPresent()) {
+        var alternatives = PlaySupport.ordinary(side, view).stream()
+            .filter(a -> a.card().equals(Rules.mighty(view.contract().trump()))
+                || Rules.conditionsFor(view.contract().trump(), view.trickNumber(), a).leadSuit()
+                != primary.get()).toList();
+        if (!alternatives.isEmpty()) {
+          side = alternatives;
+        }
+      }
+    }
     List<Action> ordinary = PlaySupport.ordinary(side, view);
     var failurePressure = ContractFailurePressure.lead(view, facts, ordinary);
     if (failurePressure.isPresent()) {
