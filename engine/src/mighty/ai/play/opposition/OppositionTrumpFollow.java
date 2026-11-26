@@ -41,6 +41,18 @@ final class OppositionTrumpFollow {
       return new PlayDecision(PlaySupport.cheapest(cheaperPoint, view),
           "낮은 점수 기루로 현재 승리를 요구하고 최고 기루는 다음 공격에 남깁니다.");
     }
+    // 뒤 주공이 중간 점수로 선을 얻지 못하게 하되 독립 승리 한 장과 받침을 남깁니다.
+    if (facts.remainingSeats().contains(view.context().declarer())
+        && !facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
+        && facts.cards().outsideCards().contains(Joker.INSTANCE) && !low.isEmpty()
+        && !facts.isSuitTop(winner.action().card())) {
+      var tops = winners.stream().filter(a -> facts.isSuitTop(a.card()) && a.card().points() > 0)
+          .toList();
+      if (tops.size() >= 2) {
+        return new PlayDecision(PlaySupport.cheapest(tops, view),
+            "연결 탑의 낮은 점수로 뒤 주공의 중간 승리를 막고 최고 탑과 받침을 남깁니다.");
+      }
+    }
     // 첫 순회의 적은 점수는 특수카드가 빠진 안전한 최고 기루로 나중에 크게 잡을 수 있습니다.
     boolean firstRound = view.context().history().stream()
         .noneMatch(t -> view.contract().trump().matches(

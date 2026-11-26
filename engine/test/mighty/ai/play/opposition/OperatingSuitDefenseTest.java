@@ -167,4 +167,46 @@ class OperatingSuitDefenseTest {
         base.trick());
     assertTrue(preserve(view).isEmpty());
   }
+
+  @Test
+  void keepsPrimaryDefenseWhenOnlyWorstCaseSpecialAllocationWouldStripIt() {
+    for (String holding : List.of("HK H8 H5 S2 S3 D2 D3 C2 C4 C6",
+        "HQ HJ H8 H5 S2 S3 D2 D3 C2 C4")) {
+      var base = view(holding, List.of(), "H10");
+      var c = base.context();
+      var observation = new View(base.self(), base.privateInfo(), base.role(), base.contract(),
+          base.friendSelection(),
+          new Context(c.playOrder(), c.declarer(), c.friendStatus(), c.history(),
+              List.of(new Bid(17, Trump.HEART), base.contract()), c.auction()), base.trick());
+      assertEquals(CardParser.parse("H5"), preserve(observation).orElseThrow().action().card());
+    }
+  }
+
+  @Test
+  void keepsPrimaryPaddingWhileFriendsReturnSuitIsUnknown() {
+    var base = view("HK H8 H5 C2 C3 C4 C5 S2 S3 S4", List.of(), "DA");
+    var c = base.context();
+    var observation = new View(base.self(), base.privateInfo(), base.role(), base.contract(),
+        base.friendSelection(),
+        new Context(c.playOrder(), c.declarer(), c.friendStatus(), c.history(),
+            List.of(new Bid(17, Trump.HEART), base.contract()), c.auction()), base.trick());
+    assertNotEquals(Suit.HEART,
+        ((StandardCard) new RulePlayPolicy().choose(observation).card()).suit());
+  }
+
+  @Test
+  void weakShortPrimaryDoesNotBecomeDefenseJustBecauseItWasDeclared() {
+    for (String holding : List.of("HJ H2 S2 S3 S4 D2 D3 C2 C4 C6",
+        "H10 H2 S2 S3 S4 D2 D3 C2 C4 C6")) {
+      var base = view(holding, List.of(), "H5");
+      var c = base.context();
+      var observation = new View(base.self(), base.privateInfo(), base.role(), base.contract(),
+          base.friendSelection(),
+          new Context(c.playOrder(), c.declarer(), c.friendStatus(), c.history(),
+              List.of(new Bid(17, Trump.HEART), base.contract()), c.auction()), base.trick());
+      assertFalse(OppositionGuards.protectsDevelopment(observation, new PlayFacts(observation),
+          Suit.HEART));
+    }
+  }
+
 }

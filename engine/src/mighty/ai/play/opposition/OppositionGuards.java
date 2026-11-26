@@ -39,7 +39,16 @@ public final class OppositionGuards {
             c.equals(Rules.mighty(view.contract().trump())) || c instanceof Joker
                 || c instanceof StandardCard s && s.suit() == suit && s.rank().value() > highest)
         .count();
-    if (held.size() <= threats) {
+    // 프렌드에게 주력이 없어 반환하지 못할 수 있으므로 마이티 소모처를 주력으로 확정하지 않습니다.
+    // 보존 가능성과 확정 승리는 다릅니다. 일반 상위만으로도 받침이 소진될 약한 묶음은 버릴 수 있습니다.
+    long ordinaryBlockers = facts.cards().outsideCards().stream()
+        .filter(c -> c instanceof StandardCard other && other.suit() == suit
+            && !c.equals(Rules.mighty(view.contract().trump())) && other.rank().value() > highest)
+        .count();
+    boolean possibleDefense = facts.declarerSuits().assess(suit).reinforced()
+        && held.size() >= 2 && held.size() > ordinaryBlockers
+        && held.stream().anyMatch(c -> c.points() > 0);
+    if (held.size() <= threats && !possibleDefense) {
       return 0;
     }
     int emptied = 0;

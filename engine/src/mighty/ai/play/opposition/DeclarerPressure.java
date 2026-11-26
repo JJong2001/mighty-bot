@@ -36,6 +36,9 @@ final class DeclarerPressure {
     if (!held.contains(card)) {
       return false;
     }
+    if (card.points() > 0 && OppositionGuards.protectsDevelopment(view, facts, card.suit())) {
+      return true;
+    }
     int length = held.size();
     int highest = held.stream().mapToInt(c -> c.rank().value()).max().orElseThrow();
     // 상위가 모두 빠진 9도 수비가 됩니다. 낮은 받침 카드까지 공격 카드로 보지는 않습니다.
