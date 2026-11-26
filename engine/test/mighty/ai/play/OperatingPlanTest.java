@@ -2229,7 +2229,7 @@ class OperatingPlanTest {
   }
 
   @Test
-  void keepsJokerForHigherTrumpOnlyWhenGunAndSeatsAreSafe() {
+  void keepsSafeJokerAgainstConcentratedLowTrumpsEvenWithDefenderBehind() {
     var first = row(1, Trump.CLUB, p(0, "SK"), p(1, "S2"), p(2, "S5"), p(3, "S4"), p(4, "CJ"));
     var second = row(2, Trump.CLUB, p(4, "D2"), p(0, "D3"), p(1, "D4"), p(2, "DA"), p(3, "D5"));
     var third = row(3, Trump.CLUB, p(2, "CQ"), p(3, "C2"), p(4, "C4"), p(0, "SA"), p(1, "C5"));
@@ -2241,7 +2241,8 @@ class OperatingPlanTest {
             new CardFriend(card("JK")), UnrevealedFriend.INSTANCE,
             List.of(first, second, third, fourth),
             List.of(p(0, "C6"), p(1, "C9")));
-        assertEquals(safeGun && voidBehind ? 0 : 1,
+        // 집중된 물패 기루 승리는 뒤의 보유자 유무만으로 회수하지 않습니다. 콜 안전은 필수입니다.
+        assertEquals(safeGun ? 0 : 1,
             policy.choose(v).card() instanceof Joker ? 1 : 0);
       }
     }

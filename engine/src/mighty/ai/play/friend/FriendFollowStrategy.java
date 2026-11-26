@@ -21,6 +21,10 @@ import mighty.game.observation.View;
 final class FriendFollowStrategy {
 
   static PlayDecision choose(View view, PlayFacts facts, List<Action> legal) {
+    var trumpResponse = FriendTrumpResponse.choose(view, facts, legal);
+    if (trumpResponse.isPresent()) {
+      return trumpResponse.get();
+    }
     if (view.contract().trump() == Trump.NO_TRUMP && view.contract().points() >= 16
         && view.context().friendStatus() instanceof UnrevealedFriend
         && view.trick().get(0).seat().equals(view.context().declarer())
