@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import mighty.ai.evaluation.PairedSettlementComparison;
 import mighty.ai.planning.BidderSupportPlan;
 import mighty.ai.planning.HighNoTrumpPlan;
 import mighty.ai.planning.NoTrumpPlanner;
@@ -35,19 +36,25 @@ import mighty.model.Rank;
 import mighty.model.Suit;
 import mighty.model.Trump;
 
-/** 공개 입찰을 설명하는 가상 패에서 패스·맞기루·다른 공약의 내 명목 정산점을 짝지어 비교합니다. */
+/**
+ * 공개 입찰을 설명하는 가상 패에서 패스·맞기루·다른 공약의 내 명목 정산점을 짝지어 비교합니다.
+ */
 public final class ContestedSuitAuction {
+
   private static final int DEALS = 32;
   private static final int DRAW_LIMIT = 64;
   private static final int FRIEND_DEALS = 8;
 
-  private record FriendComparison(FriendView view, BidderSupportPlan plan, FriendSelection usual) {}
+  private record FriendComparison(FriendView view, BidderSupportPlan plan, FriendSelection usual) {
+
+  }
 
   // 준비 단계와 실제 지정 단계가 동일한 관측을 사용하면 짝지은 대국을 다시 열지 않습니다.
   private static final Map<FriendComparison, FriendSelection> FRIEND_CACHE =
       new java.util.concurrent.ConcurrentHashMap<>();
 
-  private ContestedSuitAuction() {}
+  private ContestedSuitAuction() {
+  }
 
   static Optional<Comparison> specialCompetition(BiddingView view, BiddingHand own,
       List<BidOffer> legal, List<BidOffer> ordinary) {
@@ -75,7 +82,7 @@ public final class ContestedSuitAuction {
     }
     if (support.isPresent()) {
       legal.stream().filter(o -> o.bid().trump() == Trump.NO_TRUMP && o.bid().points() >= 17
-          && o.bid().points() < 20).min(Comparator.comparingInt(o -> o.bid().points()))
+              && o.bid().points() < 20).min(Comparator.comparingInt(o -> o.bid().points()))
           .ifPresent(offers::add);
       var eighteen = new BidOffer(new Bid(18, Trump.NO_TRUMP));
       if (own.hasMighty(Trump.NO_TRUMP) && legal.contains(eighteen)
@@ -125,11 +132,13 @@ public final class ContestedSuitAuction {
     }
     var primary = NoTrumpPlanner.analyze(hand).primary();
     var holding = hand.ordinaryHolding(primary, Trump.NO_TRUMP);
-    return holding.size() >= 4 && holding.size() > hand.ordinaryTopRunLength(primary, Trump.NO_TRUMP)
-        ? Optional.of(primary) : Optional.empty();
+    return
+        holding.size() >= 4 && holding.size() > hand.ordinaryTopRunLength(primary, Trump.NO_TRUMP)
+            ? Optional.of(primary) : Optional.empty();
   }
 
   static final class Outcomes {
+
     int deals;
     int successes;
     int backRuns;
@@ -143,23 +152,47 @@ public final class ContestedSuitAuction {
     }
   }
 
-  record Estimate(Outcomes bidderIsAlly, Outcomes bidderIsOpponent) {
-    Estimate() {
-      this(new Outcomes(), new Outcomes());
+  /**
+   * 같은 배분의 후보별 정산을 모아 합계와 추가 인상의 근거를 함께 계산합니다.
+   */
+  static final class Estimate {
+
+    private final Outcomes bidderIsAlly = new Outcomes();
+    private final Outcomes bidderIsOpponent = new Outcomes();
+    final List<Integer> sampleSettlements = new ArrayList<>();
+
+    Outcomes bidderIsAlly() {
+      return bidderIsAlly;
+    }
+
+    Outcomes bidderIsOpponent() {
+      return bidderIsOpponent;
     }
 
     int total() {
       return bidderIsAlly.settlement + bidderIsOpponent.settlement;
     }
+
+    void add(RoundResult result, int settlement, boolean allied) {
+      (allied ? bidderIsAlly : bidderIsOpponent).add(result, settlement);
+      sampleSettlements.add(settlement);
+    }
+
+    boolean confirmsRaiseOver(Estimate lower) {
+      return PairedSettlementComparison.hasClearGain(lower.sampleSettlements, sampleSettlements);
+    }
   }
 
-  record Comparison(BiddingAction choice, Map<BiddingAction, Estimate> estimates) {}
+  record Comparison(BiddingAction choice, Map<BiddingAction, Estimate> estimates) {
+
+  }
 
   static Comparison evaluate(BiddingView view, PublicBid signal, List<BidOffer> alternatives) {
     return evaluate(view, signal, alternatives, false, Optional.empty());
   }
 
-  private static Comparison evaluate(BiddingView view, PublicBid signal, List<BidOffer> alternatives,
+  private static Comparison evaluate(BiddingView view, PublicBid signal,
+      List<BidOffer> alternatives,
       boolean inferControls, Optional<BidderSupportPlan> nextHonor) {
     var seats = view.bidding().participants().seats();
     var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, seats), Set.copyOf(seats));
@@ -191,9 +224,9 @@ public final class ContestedSuitAuction {
         var result = service.playToEnd(round);
         var settlement = RoundSettlement.nominal(result,
             round.friendSelection().orElseThrow() == SpecialFriend.NONE);
-        boolean allied = onDeclarerTeam(result, view.self()) == onDeclarerTeam(result, signal.seat());
-        var group = allied ? entry.getValue().bidderIsAlly() : entry.getValue().bidderIsOpponent();
-        group.add(result, settlement.get(view.self()));
+        boolean allied =
+            onDeclarerTeam(result, view.self()) == onDeclarerTeam(result, signal.seat());
+        entry.getValue().add(result, settlement.get(view.self()), allied);
       }
     }
     // 프렌드가 될 가능성과 야당일 때의 큰 손실은 실제 표본 빈도대로 평균에 포함합니다.
@@ -203,6 +236,13 @@ public final class ContestedSuitAuction {
   static BiddingAction bestChoice(Map<BiddingAction, Estimate> results) {
     BiddingAction best = BidPass.INSTANCE;
     for (var entry : results.entrySet()) {
+      if (entry.getKey() instanceof BidOffer proposed && results.entrySet().stream()
+          .anyMatch(lower -> lower.getKey() instanceof BidOffer available
+              && available.bid().trump() == proposed.bid().trump()
+              && available.bid().points() < proposed.bid().points()
+              && !entry.getValue().confirmsRaiseOver(lower.getValue()))) {
+        continue;
+      }
       if (entry.getValue().total() > results.get(best).total()) {
         best = entry.getKey();
       }
@@ -210,7 +250,9 @@ public final class ContestedSuitAuction {
     return best;
   }
 
-  /** 버리기 뒤 동일한 공개 입찰 조건에서 차상위 납치와 기존 프렌드의 내 정산을 비교합니다. */
+  /**
+   * 버리기 뒤 동일한 공개 입찰 조건에서 차상위 납치와 기존 프렌드의 내 정산을 비교합니다.
+   */
   public static FriendSelection preferredFriend(FriendView view, BidderSupportPlan plan,
       FriendSelection usual) {
     var called = new CardFriend(plan.called());
@@ -245,7 +287,8 @@ public final class ContestedSuitAuction {
     var table = List.copyOf(seats);
     var order = PlayOrder.from(new TableLayout(GameMode.FIVE_PLAYER, table), seats);
     var service = RoundService.strategic();
-    int gain = 0;
+    var usualSettlements = new ArrayList<Integer>();
+    var calledSettlements = new ArrayList<Integer>();
     for (int sample = 0; sample < FRIEND_DEALS; sample++) {
       var pool = draw(unseen, ((BidOffer) plan.signal().action()).bid(), random, true,
           Optional.of(plan));
@@ -259,10 +302,11 @@ public final class ContestedSuitAuction {
         round.chooseFriend(view.self(), friend);
         int net = RoundSettlement.nominal(service.playToEnd(round), friend == SpecialFriend.NONE)
             .get(view.self());
-        gain += friend.equals(called) ? net : -net;
+        (friend.equals(called) ? calledSettlements : usualSettlements).add(net);
       }
     }
-    return gain > 0 ? called : usual;
+    return PairedSettlementComparison.hasClearGain(usualSettlements, calledSettlements)
+        ? called : usual;
   }
 
   private static Map<Seat, List<Card>> dealHands(List<Seat> seats, Seat self, List<Card> own,
@@ -284,7 +328,8 @@ public final class ContestedSuitAuction {
     return result.declarer().equals(seat) || result.friend().filter(seat::equals).isPresent();
   }
 
-  private static List<Card> draw(List<Card> unseen, Bid signal, Random random, boolean inferControls,
+  private static List<Card> draw(List<Card> unseen, Bid signal, Random random,
+      boolean inferControls,
       Optional<BidderSupportPlan> nextHonor) {
     var pool = new ArrayList<>(unseen);
     if (signal.points() < 16) {

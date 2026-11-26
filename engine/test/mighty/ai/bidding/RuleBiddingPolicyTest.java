@@ -66,7 +66,8 @@ class RuleBiddingPolicyTest {
     var expected = new BidOffer(new Bid(16, Trump.NO_TRUMP));
     var policy = new RuleBiddingPolicy();
     assertEquals(expected, policy.choose(new BiddingView(new Seat(0), own, 40, state())));
-    var previous = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB))));
+    var previous = state().submit(
+        new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.CLUB))));
     assertEquals(expected, policy.choose(new BiddingView(new Seat(1), own, 40, previous)));
     var higher = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(17, Trump.HEART))));
     assertEquals(new BidOffer(new Bid(17, Trump.NO_TRUMP)),
@@ -79,13 +80,15 @@ class RuleBiddingPolicyTest {
       "S2 SQ SK SA CA C7 H4 H10 HQ JK, 16, true",
       "S8 SJ SA D3 D10 DA C8 CK CA JK, 13, false"
   })
-  void pricesSixteenNoTrumpWithTwoSourcesAndOneDevelopableSuit(String cards, int opening, boolean competes) {
+  void pricesSixteenNoTrumpWithTwoSourcesAndOneDevelopableSuit(String cards, int opening,
+      boolean competes) {
     var own = CardParser.parseList(cards);
     var policy = new RuleBiddingPolicy();
     var openingTrump = competes ? Trump.NO_TRUMP : Trump.SPADE;
     assertEquals(new BidOffer(new Bid(opening, openingTrump)),
         policy.choose(new BiddingView(new Seat(0), own, 40, state())));
-    var previous = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.HEART))));
+    var previous = state().submit(
+        new PublicBid(new Seat(0), new BidOffer(new Bid(16, Trump.HEART))));
     var expected = competes ? new BidOffer(new Bid(16, Trump.NO_TRUMP)) : BidPass.INSTANCE;
     assertEquals(expected, policy.choose(new BiddingView(new Seat(1), own, 40, previous)));
   }
@@ -148,10 +151,12 @@ class RuleBiddingPolicyTest {
       "JK SK S5 S3 D10 HA HK HQ H2 CK, 17, 18, NO_TRUMP",
       "JK SK S5 S3 D10 HA HK HQ H2 CK, 18, 0, NO_TRUMP",
       "SA SK S5 S3 D10 HA HK HQ H2 JK, 15, 16, HEART",
-      "SA SK S5 S3 D10 HA HK HQ H2 JK, 17, 18, NO_TRUMP"
+      "SA SK S5 S3 D10 HA HK HQ H2 JK, 17, 17, NO_TRUMP"
   })
-  void comparesFriendProspectWithTakingContract(String cards, int standing, int points, Trump trump) {
-    var auction = state().submit(new PublicBid(new Seat(0), new BidOffer(new Bid(standing, Trump.CLUB))));
+  void comparesFriendProspectWithTakingContract(String cards, int standing, int points,
+      Trump trump) {
+    var auction = state().submit(
+        new PublicBid(new Seat(0), new BidOffer(new Bid(standing, Trump.CLUB))));
     var action = new RuleBiddingPolicy().choose(new BiddingView(new Seat(1),
         mighty.data.CardParser.parseList(cards), 40, auction));
     assertEquals(points == 0 ? BidPass.INSTANCE : new BidOffer(new Bid(points, trump)), action);
@@ -290,7 +295,8 @@ class RuleBiddingPolicyTest {
     var hand = BiddingHand.from(owned);
     var legal = LegalBiddingActions.bidAndPassActions(auction).stream()
         .filter(BidOffer.class::isInstance).map(BidOffer.class::cast).toList();
-    var comparison = ContestedSuitAuction.specialCompetition(view, hand, legal, List.of()).orElseThrow();
+    var comparison = ContestedSuitAuction.specialCompetition(view, hand, legal, List.of())
+        .orElseThrow();
     var candidate = new BidOffer(new Bid(points, candidateTrump));
     var route = comparison.estimates().get(candidate);
     assertNotNull(route);
@@ -436,6 +442,7 @@ class RuleBiddingPolicyTest {
     assertEquals(BidPass.INSTANCE,
         policy.choose(new BiddingView(new Seat(1), noJoker, 40, over16)));
   }
+
   @ParameterizedTest
   @ValueSource(strings = {"SA SK SJ S3 CA CK C7 HA H3 JK", "SA SK SJ S3 DA DK D7 HA H3 JK"})
   void competesInNoTrumpWithTwoExtendableSuitsAndBothSpecials(String held) {
@@ -493,7 +500,7 @@ class RuleBiddingPolicyTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"D2 D4 D6, HK", "D2 DJ DQ, SQ", "HK D2 D4, HQ"})
+  @CsvSource({"D2 D4 D6, SQ", "D2 DJ DQ, SQ", "HK D2 D4, HQ"})
   void comparesTheBiddersHonorWithTheUsualFriendAfterKitty(String kitty, String expected) {
     var self = new Seat(0);
     var opponent = new Seat(1);
