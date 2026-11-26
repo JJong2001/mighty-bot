@@ -64,7 +64,12 @@ public final class TrumpOwnership {
               .filter(rank -> rank.value() > card.rank().value())
               .map(rank -> new StandardCard(card.suit(), rank))
               .filter(c -> !c.equals(mighty) && !spent.contains(c)).count();
-          if (card.points() == 0) {
+          boolean ruffed = !view.contract().trump()
+              .matches(Rules.conditionsFor(view.contract().trump(),
+                  trick.number(), trick.cards().get(0).action()).leadSuit());
+          if (ruffed && card.points() > 0 && higher == 0 && remainingCount() <= 1) {
+            possibleRemainder.put(play.seat(), 0);
+          } else if (card.points() == 0) {
             possibleRemainder.remove(play.seat());
           } else if (index > 0 && mightyPlayed && higher <= 1) {
             possibleRemainder.put(play.seat(), (int) higher);

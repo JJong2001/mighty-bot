@@ -74,6 +74,10 @@ final class DeclarerFollowStrategy {
     if (protectedAlly.isPresent()) {
       return protectedAlly.get();
     }
+    var control = preserveTrumpControl(position);
+    if (control.isPresent()) {
+      return control.get();
+    }
     var regain = NoTrumpOperations.regain(position);
     if (regain.isPresent()) {
       return regain.get();
@@ -206,6 +210,38 @@ final class DeclarerFollowStrategy {
       }
     }
     return Optional.empty();
+  }
+
+  /**
+   * 작은 실점을 피하려 유일한 상위 통제권을 내주지 않습니다.
+   */
+  private static Optional<PlayDecision> preserveTrumpControl(DeclarerPosition position) {
+    var view = position.view();
+    var facts = position.facts();
+    if (!view.contract().trump().matches(facts.conditions().leadSuit())
+        || facts.allyWinning() || !facts.remainingSeats().isEmpty() || facts.trickPoints() > 1
+        || mighty.ai.play.ScoreSupport.lossWouldDefeatContract(view, facts)) {
+      return Optional.empty();
+    }
+    var ordinary = position.trumps();
+    if (ordinary.size() < 3) {
+      return Optional.empty();
+    }
+    var top = ordinary.stream().filter(a -> facts.isSuitTop(a.card()))
+        .filter(facts.winningActions()::contains).findFirst();
+    if (top.isEmpty()) {
+      return Optional.empty();
+    }
+    int next = ordinary.stream().filter(a -> !a.equals(top.get()))
+        .mapToInt(a -> ((StandardCard) a.card()).rank().value()).max().orElse(0);
+    long blockers = facts.cards().trumps().outside().stream().filter(c -> c.rank().value() > next)
+        .count();
+    if (blockers < 2) {
+      return Optional.empty();
+    }
+    return facts.passingActions(ordinary).stream().filter(a -> a.card().points() == 0)
+        .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()))
+        .map(a -> new PlayDecision(a, "작은 기루 실점은 흘리고 여러 외부 상위를 견제할 유일한 통제권을 남깁니다."));
   }
 
 }

@@ -26,6 +26,22 @@ final class DeclarerLeadStrategy {
   }
 
   static PlayDecision choose(DeclarerPosition position) {
+    var planned = choosePlan(position);
+    var callOpening = mighty.ai.play.JokerCallPlan.openingWinner(position.view(), position.facts(),
+        position.legal());
+    if (callOpening.isPresent()) {
+      boolean mightyFriend = position.calls(Rules.mighty(position.view().contract().trump()));
+      boolean winsOwnOpening = position.facts().isSuitTop(planned.action().card())
+          && planned.action().card() instanceof StandardCard card
+          && (!mightyFriend || card.rank() == Rank.ACE);
+      if (!winsOwnOpening) {
+        return decision(callOpening.get(), "초구를 확보해 다음 선에서 외부 조커를 총으로 압박합니다.");
+      }
+    }
+    return planned;
+  }
+
+  private static PlayDecision choosePlan(DeclarerPosition position) {
     var tumble = TumbleNoTrumpPlay.lead(position);
     if (tumble.isPresent()) {
       return tumble.get();
@@ -204,7 +220,17 @@ final class DeclarerLeadStrategy {
           .findFirst().orElseThrow(), "다른 자력 초구가 없어 마이티로 선을 확보한 뒤 조커 프렌드를 찾습니다.");
     }
     if (position.needsFriendCall() && !sides.isEmpty()) {
-      return decision(position.lowSide(sides), "자력 초구가 부족해 낮은 사이드로 지정 프렌드의 지원을 요청합니다.");
+      var development = position.calls(Rules.mighty(view.contract().trump()))
+          ? SideOpeningPlan.request(position) : java.util.Optional.<Action>empty();
+      if (development.isPresent()) {
+        return decision(development.get(), "지원 후 사이드 점수를 개발할 받침이 남는 문양에서 프렌드를 찾습니다.");
+      }
+      var requestCards = sides.stream()
+          .filter(a -> !a.card().equals(Rules.gun(view.contract().trump()))
+              || view.hand().contains(Joker.INSTANCE) || !position.facts().cards().outsideCards()
+              .contains(Joker.INSTANCE)).toList();
+      return decision(position.lowSide(requestCards.isEmpty() ? sides : requestCards),
+          "자력 초구가 부족해 낮은 사이드로 지정 프렌드의 지원을 요청합니다.");
     }
     return fallback(position);
   }
@@ -283,6 +309,10 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> trumps = position.trumps();
     TrumpControl control = new TrumpControl(view, position.facts());
+    var countedProbe = control.singleBlockerProbe(trumps);
+    if (countedProbe.isPresent()) {
+      return decision(countedProbe.get(), "받침이 충분하고 외부 상위가 한 장뿐이므로 물패로 빼고 점수 기루를 살립니다.");
+    }
     if (position.calls(Rules.mighty(view.contract().trump())) && position.enemiesMayHaveTrump()
         && trumps.size() >= 3) {
       var high = PlaySupport.highest(trumps);

@@ -33,7 +33,8 @@ final class OppositionLeadStrategy {
       }
     }
     TrumpControl trumps = new TrumpControl(view, facts);
-    var stripping = legal.stream().filter(trumps::canStripDeclarer).findFirst();
+    var stripping = legal.stream().filter(trumps::canStripDeclarer)
+        .max(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
     if (stripping.isPresent()) {
       return new PlayDecision(stripping.get(), "공개 카운팅으로 주공의 마지막 기루를 이겨 탈기시킵니다.");
     }

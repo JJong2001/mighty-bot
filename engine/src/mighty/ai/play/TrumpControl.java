@@ -66,6 +66,26 @@ public final class TrumpControl {
   }
 
   /**
+   * 공개 카운팅상 한 장의 상위를 물패로 빼고도 점수와 회수 기루를 남깁니다.
+   */
+  public Optional<Action> singleBlockerProbe(List<Action> legal) {
+    if (own().size() < 3 || own().stream().noneMatch(c -> c.points() > 0) || outside().size() != 1
+        || facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump()))
+        || facts.cards().outsideCards().contains(mighty.model.Joker.INSTANCE)
+        || !facts.cards().trumps().enemiesMayHold(facts)) {
+      return Optional.empty();
+    }
+    int blocker = outside().get(0).rank().value();
+    if (own().stream().anyMatch(c -> c.rank().value() > blocker)) {
+      return Optional.empty();
+    }
+    return PlaySupport.ordinary(legal, view).stream()
+        .filter(a -> view.contract().trump().matches(((StandardCard) a.card()).suit())
+            && a.card().points() == 0)
+        .max(java.util.Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value()));
+  }
+
+  /**
    * 승리하는 조커 한 바퀴와 자력 탑카로 최악의 단독 분포까지 소모하고 낮은 기루를 살릴 수 있습니다.
    */
   public boolean canEstablishTailAfterSweep() {
@@ -78,13 +98,18 @@ public final class TrumpControl {
   }
 
   /**
-   * 주공 외의 후보 자리가 모두 공개 무기루일 때만 마지막 기루 위치를 좁힙니다.
+   * 주공 외의 자리가 모두 공개 무기루이고 연속 상위로 전부 이길 때만 탈기시킵니다.
    */
   public boolean canStripDeclarer(Action action) {
-    if (view.trickNumber().value() <= 3 || !(action.card() instanceof StandardCard card)
-        || !view.contract().trump().matches(card.suit()) || outside().size() != 1
+    if (!(action.card() instanceof StandardCard card)
+        || !view.contract().trump().matches(card.suit()) || outside().isEmpty()
         || facts.cards().isVoid(view.context().declarer(), card.suit()) || !facts.isMasterLead(
         action)) {
+      return false;
+    }
+    int outsideTop = outside().stream().mapToInt(c -> c.rank().value()).max().orElseThrow();
+    long winningDraws = own().stream().filter(c -> c.rank().value() > outsideTop).count();
+    if (winningDraws < outside().size()) {
       return false;
     }
     return view.context().playOrder().seats().stream()
@@ -153,6 +178,25 @@ public final class TrumpControl {
     return legal.stream().filter(action -> action instanceof StandardPlay play && !play.call()
             && view.contract().trump().matches(play.card().suit()) && play.card().rank() == Rank.ACE)
         .findFirst();
+  }
+
+  /**
+   * 주공이 점수 기루로 요청한 상위를 이미 확인했다면 추가 특수카드 지원은 남깁니다.
+   */
+  public boolean needsSpecialSweep() {
+    if (!facts.cards().trumps().enemiesMayHold(facts)) {
+      return false;
+    }
+    var history = view.context().history();
+    for (int i = history.size() - 1; i >= 0; i--) {
+      var lead = history.get(i).cards().get(0);
+      if (lead.seat().equals(view.context().declarer()) && lead.action()
+          .card() instanceof StandardCard card
+          && view.contract().trump().matches(card.suit()) && card.points() > 0) {
+        return outside().stream().anyMatch(c -> c.rank().value() > card.rank().value());
+      }
+    }
+    return true;
   }
 
 }

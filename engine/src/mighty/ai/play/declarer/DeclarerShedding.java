@@ -54,8 +54,6 @@ final class DeclarerShedding {
       return Optional.empty();
     }
     var safe = facts.winningActions().stream().filter(position.legal()::contains)
-        .filter(action -> !(action.card() instanceof StandardCard card) || !view.contract().trump()
-            .matches(card.suit()) || view.contract().trump().matches(facts.conditions().leadSuit()))
         .filter(action -> facts.isSecured(new mighty.game.trick.PublicPlay(view.self(), action))
             || action.card() instanceof StandardCard card
             && card.suit() == facts.conditions().leadSuit() && facts.isSuitTop(card))

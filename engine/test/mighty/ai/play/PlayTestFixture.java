@@ -65,7 +65,20 @@ final class PlayTestFixture {
   /**
    * 카운팅 검사 전용 공개 이력. 실제 승자·차례·중복은 검사하며 상대의 손패는 만들지 않습니다.
    */
-  static List<PublicTrick> countedHistory(String owned, String buried, String known,
+  static List<PublicTrick> countedHistory(String owned, String buried, String known, String unseen,
+      List<PublicPlay> current, PublicTrick last) {
+    return countedHistory(Trump.SPADE, owned, buried, known, unseen, current, last);
+  }
+
+  static View withPriorContract(View view, Bid prior) {
+    var c = view.context();
+    var context = new Context(c.playOrder(), c.declarer(), c.friendStatus(), c.history(),
+        List.of(prior, view.contract()), c.auction());
+    return new View(view.self(), view.privateInfo(), view.role(), view.contract(),
+        view.friendSelection(), context, view.trick());
+  }
+
+  static List<PublicTrick> countedHistory(Trump trump, String owned, String buried, String known,
       String unseen,
       List<PublicPlay> current, PublicTrick last) {
     int count = 10 - CardParser.parseList(owned).size();
@@ -89,7 +102,7 @@ final class PlayTestFixture {
             : new StandardPlay((StandardCard) c, false);
         plays.add(new PublicPlay(new Seat(seat), a));
       }
-      int winner = Rules.currentWinner(Trump.SPADE, new TrickNumber(number), plays).orElseThrow()
+      int winner = Rules.currentWinner(trump, new TrickNumber(number), plays).orElseThrow()
           .seat().index();
       if (winner != 0) {
         Action strongest = plays.get(winner).action();
@@ -103,7 +116,7 @@ final class PlayTestFixture {
         plays.set(winner, new PublicPlay(new Seat(winner), old));
         plays.set(0, new PublicPlay(new Seat(0), strongest));
       }
-      Seat actual = Rules.currentWinner(Trump.SPADE, new TrickNumber(number), plays).orElseThrow()
+      Seat actual = Rules.currentWinner(trump, new TrickNumber(number), plays).orElseThrow()
           .seat();
       assertEquals(new Seat(0), actual);
       history.add(new PublicTrick(new TrickNumber(number), plays, actual));

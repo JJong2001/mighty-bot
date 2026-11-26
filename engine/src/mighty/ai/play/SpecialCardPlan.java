@@ -44,7 +44,8 @@ public final class SpecialCardPlan {
     }
     var ordinary = PlaySupport.ordinary(winning, view);
     if (!ordinary.isEmpty()) {
-      return PlaySupport.cheapest(ordinary, view);
+      return RuffPlan.choose(view, facts, ordinary)
+          .orElseGet(() -> PlaySupport.cheapest(ordinary, view));
     }
     return mighty.orElseGet(() -> PlaySupport.cheapest(winning, view));
   }

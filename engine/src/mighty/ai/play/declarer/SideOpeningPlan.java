@@ -31,6 +31,23 @@ final class SideOpeningPlan {
     return Optional.empty();
   }
 
+  /**
+   * 단독 물패보다 지원 후 개발할 여지가 있는 긴 사이드에서 찾습니다.
+   */
+  static Optional<Action> request(DeclarerPosition position) {
+    var view = position.view();
+    var gun = mighty.game.rule.Rules.gun(view.contract().trump());
+    return Arrays.stream(Suit.values()).filter(suit -> !view.contract().trump().matches(suit))
+        .filter(suit -> position.inSuit(suit).size() >= 2)
+        .filter(suit -> position.inSuit(suit).stream().anyMatch(a -> a.card().points() > 0))
+        .filter(suit -> position.inSuit(suit).stream()
+            .anyMatch(a -> a.card().points() == 0 && !a.card().equals(gun)))
+        .max(Comparator.comparingInt(suit -> position.inSuit(suit).size()))
+        .flatMap(suit -> position.inSuit(suit).stream()
+            .filter(a -> a.card().points() == 0 && !a.card().equals(gun))
+            .min(Comparator.comparingInt(a -> ((StandardCard) a.card()).rank().value())));
+  }
+
   static boolean continuing(DeclarerPosition position, SuitDevelopment plan) {
     if (plan.held().size() < 2 || plan.blockers().size() > plan.held().size()) {
       return false;
