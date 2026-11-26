@@ -26,6 +26,10 @@ final class DeclarerLeadStrategy {
   }
 
   static PlayDecision choose(DeclarerPosition position) {
+    var tumble = TumbleNoTrumpPlay.lead(position);
+    if (tumble.isPresent()) {
+      return tumble.get();
+    }
     var view = position.view();
     List<Action> jokers = position.legal().stream().filter(action -> action instanceof JokerLead)
         .toList();

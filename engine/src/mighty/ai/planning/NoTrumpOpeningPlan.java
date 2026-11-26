@@ -22,6 +22,7 @@ public record NoTrumpOpeningPlan(
    * A의 선사용과 지원 요청을 서로 다른 운영 목적으로 보존합니다.
    */
   public enum Purpose {
+    DEVELOP_SIDE_WITH_CONTROLS("마쪼와 마공 받침을 남기고 사이드 K의 상위를 먼저 확인합니다."),
     DEVELOP_PRIMARY("일반 주력 탑카부터 확인하고 조커로 상위를 빼며 마이티는 선 회수에 남깁니다."),
     PRESERVE_ENTRY("자력 주력으로 초구를 확보하고 사이드 탑카는 이후 회수에 남깁니다."),
     FORCE_JOKER("주력 탑카로 초구를 확보한 뒤 총을 쏘고 독립 회수 문양으로 선을 돌려받습니다."),

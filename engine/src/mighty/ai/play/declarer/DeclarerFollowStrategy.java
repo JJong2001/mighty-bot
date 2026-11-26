@@ -26,6 +26,10 @@ final class DeclarerFollowStrategy {
    * 먼저 해당하는 판단을 채택합니다. 순서 변경은 구조 정리가 아니라 전략 변경입니다.
    */
   static PlayDecision choose(DeclarerPosition position) {
+    var tumble = TumbleNoTrumpPlay.follow(position);
+    if (tumble.isPresent()) {
+      return tumble.get();
+    }
     var view = position.view();
     var facts = position.facts();
     var legal = position.legal();

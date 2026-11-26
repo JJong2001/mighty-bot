@@ -20,6 +20,19 @@ public final class RuleDiscardPolicy implements DiscardPolicy {
   List<List<Card>> ranked(DiscardView view, int limit) {
     Objects.requireNonNull(view);
     var ranked = candidates.ranked(view);
+    // 같은 저공약의 별도 운영이 가능한 경우에만 받침과 개발패를 보존합니다.
+    if (mighty.ai.planning.TumbleNoTrumpPlan.find(mighty.ai.bidding.BiddingHand.from(view.hand()),
+        List.of(), view.contract()).isPresent()) {
+      var preserving = ranked.stream().filter(candidate -> {
+        var kept = new ArrayList<>(view.hand());
+        kept.removeAll(candidate.cards());
+        return mighty.ai.planning.TumbleNoTrumpPlan.find(mighty.ai.bidding.BiddingHand.from(kept),
+            candidate.cards(), view.contract()).isPresent();
+      }).toList();
+      if (!preserving.isEmpty()) {
+        return preserving.stream().limit(limit).map(DiscardCandidate::cards).toList();
+      }
+    }
     // 전체 열거에서는 시뮬레이션을 생략했던 기존 탐색 범위를 유지합니다.
     if (limit < ranked.size()) {
       comparison.refine(view, ranked);

@@ -31,6 +31,14 @@ public final class NoTrumpOpeningPlanner {
   public static NoTrumpOpeningPlan plan(BiddingHand hand, Collection<? extends Card> buried,
       FriendSelection selection, int points, List<Bid> history) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();
+    var tumble = points == 15 || points == 16
+        ? TumbleNoTrumpPlan.find(hand, buried, new Bid(points, Trump.NO_TRUMP))
+        .filter(plan -> selection.equals(new CardFriend(plan.friend())))
+        : Optional.<TumbleNoTrumpPlan>empty();
+    if (tumble.isPresent()) {
+      return new NoTrumpOpeningPlan(selection, Optional.of(tumble.get().opening()),
+          Optional.empty(), buried.size() == 3, false, DEVELOP_SIDE_WITH_CONTROLS);
+    }
     if (selection == SpecialFriend.NONE && hand.hasMighty(Trump.NO_TRUMP) && hand.hasJoker()) {
       var main = NoTrumpPlanner.signallingSuit(hand);
       var holding = HoldingControl.analyze(own, List.copyOf(buried), Trump.NO_TRUMP, main);

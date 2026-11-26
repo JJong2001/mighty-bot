@@ -17,6 +17,11 @@ final class NoTrumpBidEvaluator {
 
   static BidAssessment assess(CandidateResources resources, Collection<? extends Card> excluded) {
     var usual = assessControl(resources, excluded);
+    if (!usual.canCompete() && mighty.ai.planning.TumbleNoTrumpPlan.find(resources.hand(),
+        excluded, new mighty.game.bidding.Bid(15, Trump.NO_TRUMP)).isPresent()) {
+      return new BidAssessment(Trump.NO_TRUMP, true, 15, 15, 165, List.of(
+          "마쪼·마공 받침과 A 프렌드의 주력 연결을 남기고 사이드 K를 개발하는 닷노입니다."));
+    }
     if (!excluded.isEmpty() || usual.ceilingPoints() >= 17
         || !SpreadNoTrumpPlan.available(resources.hand())) {
       return usual;

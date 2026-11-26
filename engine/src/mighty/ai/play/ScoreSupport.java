@@ -12,6 +12,19 @@ public final class ScoreSupport {
   private ScoreSupport() {
   }
 
+  /**
+   * 여당의 보존 전략도 이번 공개 점수를 내주면 공약이 실패하는 경우에는 회수해야 합니다.
+   */
+  public static boolean lossWouldDefeatContract(View view, PlayFacts facts) {
+    if (view.role() != mighty.game.Role.DECLARER && view.role() != mighty.game.Role.FRIEND) {
+      return false;
+    }
+    int opposition = view.context().history().stream()
+        .filter(trick -> !facts.teams().isAlly(trick.winner()))
+        .mapToInt(trick -> trick.points()).sum();
+    return opposition + facts.trickPoints() >= 21 - view.contract().points();
+  }
+
   public static Optional<Action> decisive(View view, PlayFacts facts, List<Action> legal) {
     if (!facts.allyWinning() || !facts.isSecured(facts.currentWinner().orElseThrow())) {
       return Optional.empty();

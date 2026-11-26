@@ -103,6 +103,16 @@ public final class NoTrumpDistributionEvaluator {
 
   public static Support bestSupport(BiddingHand hand, Collection<? extends Card> excluded,
       int contractPoints, List<Bid> history) {
+    if (contractPoints == 15 || contractPoints == 16) {
+      var tumble = mighty.ai.planning.TumbleNoTrumpPlan.find(hand, excluded,
+          new Bid(contractPoints, Trump.NO_TRUMP));
+      if (tumble.isPresent()) {
+        var called = tumble.get().friend();
+        var plan = NoTrumpOpeningPlanner.forCandidate(hand, excluded, called, contractPoints,
+            history);
+        return new Support(called, evaluate(hand, excluded, called, plan), plan);
+      }
+    }
     return mighty.ai.planning.NoTrumpPlanner.supportCandidates(hand, excluded).stream()
         .map(card -> {
           var plan = NoTrumpOpeningPlanner.forCandidate(hand, excluded, card, contractPoints,
@@ -147,13 +157,15 @@ public final class NoTrumpDistributionEvaluator {
     }
     if (distribution.sixteenRate() >= 0.65 && distribution.meanPoints() >= 16
         && (mighty.ai.planning.NoTrumpPlanner.splitControl(hand, support.friend())
-            || hasIndependentFriendTrick(hand, support.friend()))) {
+        || hasIndependentFriendTrick(hand, support.friend()))) {
       return 16;
     }
     return 0;
   }
 
-  /** 자력 주력과 별도 프렌드 한 구로 곱노를 도전 후보에 넣되, 입찰에서 손익을 비교합니다. */
+  /**
+   * 자력 주력과 별도 프렌드 한 구로 곱노를 도전 후보에 넣되, 입찰에서 손익을 비교합니다.
+   */
   public static boolean canChallengeSeventeen(BiddingHand hand, Support support) {
     return support.distribution().seventeenRate() >= 0.50
         && hasIndependentFriendTrick(hand, support.friend());
@@ -173,7 +185,7 @@ public final class NoTrumpDistributionEvaluator {
       int run = hand.ordinaryTopRunLength(main, Trump.NO_TRUMP);
       return run >= 4 && run == hand.ordinaryHolding(main, Trump.NO_TRUMP).size()
           && Arrays.stream(Suit.values()).anyMatch(other -> other != main
-              && hand.ordinaryTopRunLength(other, Trump.NO_TRUMP) > 0);
+          && hand.ordinaryTopRunLength(other, Trump.NO_TRUMP) > 0);
     });
   }
 
