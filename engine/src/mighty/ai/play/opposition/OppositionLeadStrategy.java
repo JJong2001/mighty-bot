@@ -94,13 +94,21 @@ final class OppositionLeadStrategy {
 
   private static java.util.Optional<Action> leadPointPressure(View view, PlayFacts facts,
       List<Action> ordinary) {
-    if (view.hand().stream().mapToInt(card -> card.points()).sum() < POINT_LOAD_FOR_PRESSURE) {
+    int pointLoad = view.hand().stream().mapToInt(card -> card.points()).sum();
+    if (pointLoad < 2) {
       return java.util.Optional.empty();
     }
     var pressure = new DeclarerPressure(view, facts);
     return ordinary.stream().filter(action -> action.card().points() > 0)
         .map(action -> (mighty.game.action.StandardPlay) action)
         .filter(action -> !action.call() && !pressure.defense(action.card()))
+        // AQ처럼 점수가 둘뿐이어도 상위를 남기고 Q로 압박할 수 있습니다.
+        // 단독 탑 두 문양을 이 조건으로 먼저 소모하지는 않습니다.
+        .filter(action -> pointLoad >= POINT_LOAD_FOR_PRESSURE || view.hand().stream()
+            .anyMatch(card -> card instanceof StandardCard higher
+                && higher.suit() == action.card().suit() && higher.points() > 0
+                && !higher.equals(Rules.mighty(view.contract().trump()))
+                && higher.rank().value() > action.card().rank().value()))
         // 동료의 승리를 확정해야만 걸 수 있는 점수가 아닙니다. 수비 가치는 별도로 남깁니다.
         .min(Comparator.<mighty.game.action.StandardPlay>comparingInt(action ->
                 facts.cards().isVoid(view.context().declarer(), action.card().suit()) ? 0 : 1)

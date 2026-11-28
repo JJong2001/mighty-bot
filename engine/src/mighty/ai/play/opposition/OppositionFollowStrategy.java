@@ -15,6 +15,17 @@ import mighty.model.*;
 final class OppositionFollowStrategy {
 
   static PlayDecision choose(View view, PlayFacts facts, List<Action> legal) {
+    var continuation = new TrickContinuation(view, facts);
+    if (ScoreSupport.decisive(view, facts, legal).isEmpty()) {
+      var points = PlaySupport.ordinary(legal, view).stream().filter(a -> a.card().points() > 0).toList();
+      if (!points.isEmpty() && points.stream()
+          .allMatch(a -> continuation.spendsLastPointGuard((StandardCard) a.card()))) {
+        var low = facts.passingActions(PlaySupport.ordinary(legal, view)).stream()
+            .filter(a -> a.card().points() == 0).toList();
+        if (!low.isEmpty()) return new PlayDecision(PlaySupport.cheapest(low, view),
+            "동료가 이미 확보 중인 점수에 마지막 탑까지 겹치지 않고 주공의 다음 점수 카드를 막습니다.");
+      }
+    }
     var defense = OppositionPressure.preserveOperatingDefense(view, facts, legal);
     if (defense.isPresent()) {
       return defense.get();

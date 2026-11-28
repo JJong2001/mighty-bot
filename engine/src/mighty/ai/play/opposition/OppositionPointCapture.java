@@ -32,12 +32,18 @@ final class OppositionPointCapture {
         .filter(candidate -> candidate instanceof StandardCard standard
             && standard.suit() == suit
             && !candidate.equals(mighty.game.rule.Rules.mighty(view.contract().trump()))).toList();
-    if (holding.size() > 3
+    boolean friendMayFollow = facts.remainingSeats().stream()
+        .anyMatch(seat -> !facts.teams().isAlly(seat));
+    if (!friendMayFollow
         || holding.stream().filter(candidate -> candidate.points() > 0).count() < 2) {
       return Optional.empty();
     }
     return PlaySupport.ordinary(facts.winningActions(), view).stream()
         .filter(action -> holding.contains(action.card()) && action.card().points() > 0)
+        // 최고 수비까지 소모하지 않고, 중간 점수로 뒤 프렌드의 값싼 승리를 막습니다.
+        .filter(action -> holding.stream().anyMatch(c -> c instanceof StandardCard higher
+            && higher.rank().value() > ((StandardCard) action.card()).rank().value())
+            || holding.size() <= 3)
         .min(Comparator.comparingInt(action -> ((StandardCard) action.card()).rank().value()))
         .map(action -> new PlayDecision(action, "주공의 낮은 사이드에 작은 승리 점수로 압박하고 높은 카드를 남깁니다."));
   }

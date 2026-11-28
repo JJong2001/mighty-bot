@@ -40,6 +40,15 @@ final class OppositionPressure {
     if (!hasDefense) {
       return Optional.empty();
     }
+    // 주공의 현재 점수 카드를 잡을 수 있고 같은 문양의 후속 점수 후보가 없으면
+    // 물패를 나중에 잡겠다고 이번 점수를 통과시키지 않습니다.
+    var current = facts.currentWinner().orElseThrow();
+    if (current.seat().equals(view.context().declarer())
+        && current.action().card().points() > 0
+        && !facts.winningActions().isEmpty()
+        && facts.locations().possiblePointCards(view.context().declarer(), suit).isEmpty()) {
+      return Optional.empty();
+    }
     // 수비를 쓰지 않고도 잡을 수 있으면 굳이 흘리지 않습니다.
     boolean expendableWinner = PlaySupport.ordinary(facts.winningActions(), view).stream()
         .anyMatch(action -> !pressure.defense((StandardCard) action.card()));
@@ -86,7 +95,13 @@ final class OppositionPressure {
     boolean existingPressure =
         !winner.seat().equals(view.context().declarer()) && winner.action().card().points() > 0
             && !facts.teams().friendSeat().filter(winner.seat()::equals).isPresent();
-    if (points < 2 && existingPressure && (facts.allyWinning() || mightyBehind)) {
+    // 1점이 실렸다는 이유만으로 어차피 후속 상위에 지는 짧은 점수까지 아끼지 않습니다.
+    var pressure = new DeclarerPressure(view, facts);
+    boolean expendablePoint = ordinary.size() <= 2 && ordinary.stream()
+        .anyMatch(a -> a.card().points() > 0 && !facts.isSuitTop(a.card())
+            && !pressure.defense((StandardCard) a.card()));
+    if (points < 2 && existingPressure && (facts.allyWinning() || mightyBehind)
+        && !expendablePoint) {
       var low = ordinary.stream()
           .filter(a -> a.card().points() == 0 && !facts.winningActions().contains(a)).toList();
       if (!low.isEmpty()) {
