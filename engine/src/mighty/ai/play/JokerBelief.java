@@ -18,6 +18,11 @@ public final class JokerBelief {
   private final Map<Seat, Double> weights;
 
   public JokerBelief(View view, TeamKnowledge teams, PublicBehaviorInference behavior) {
+    this(view, teams, behavior, new CardLocationInference(view, new CardKnowledge(view)));
+  }
+
+  JokerBelief(View view, TeamKnowledge teams, PublicBehaviorInference behavior,
+      CardLocationInference locations) {
     this.view = view;
     this.teams = teams;
     this.behavior = behavior;
@@ -27,9 +32,12 @@ public final class JokerBelief {
     if (!buried && !view.publicCardHistory().hasBeenPlayed(Joker.INSTANCE)) {
       if (view.hand().contains(Joker.INSTANCE)) {
         values.put(view.self(), 1.0);
+      } else if (locations.suggestedHolders(Joker.INSTANCE).size() == 1) {
+        // 총을 선출한 주공은 조커 보유로 운영합니다. 실제 공개·자기 패가 우선입니다.
+        values.put(locations.suggestedHolders(Joker.INSTANCE).iterator().next(), 1.0);
       } else {
         for (var seat : view.context().playOrder().seats()) {
-          if (seat.equals(view.self())) {
+          if (!locations.possibleHolders(Joker.INSTANCE).contains(seat)) {
             continue;
           }
           int remaining = 10 - view.context().history().size()
@@ -55,7 +63,8 @@ public final class JokerBelief {
     if (view.hand().contains(Joker.INSTANCE)) {
       return seats.contains(view.self());
     }
-    if (weights.isEmpty() || behavior.missedJokerCaptures().isEmpty()) {
+    if (weights.isEmpty() || behavior.missedJokerCaptures().isEmpty()
+        && behavior.holdingHints().stream().noneMatch(h -> h.card() instanceof Joker)) {
       return false;
     }
     double inside = weights.entrySet().stream().filter(e -> seats.contains(e.getKey()))

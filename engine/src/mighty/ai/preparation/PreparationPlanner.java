@@ -297,34 +297,22 @@ public final class PreparationPlanner {
       }
     }
     PreparationPlan best = prepare(context, noTrump, FIFTEEN_NO_TRUMP);
-    double bestScore = Double.NEGATIVE_INFINITY;
     for (Trump trump : Trump.values()) {
-      if (trump == Trump.NO_TRUMP) {
-        continue;
-      }
+      // 닷노로 낙찰받았어도 바닥 이후 곱노가 가능하면 같은 배분에서 비교합니다.
+      // 문양 전환만 후보로 만들면 노기루 상향은 평가 전에 탈락합니다.
       var bid = new Bid(17, trump);
       if (!ContractChangeRules.canChange(context.awarded(), context.current(), bid,
           context.phase())) {
         continue;
       }
-      var suited = handsFor(context, seen, fixedDiscards, bid).get(0);
+      var suited = bestRetained(handsFor(context, seen, fixedDiscards, bid), bid);
       if (!supports(suited.assessment(trump), bid)) {
         continue;
       }
-      if (bestScore == Double.NEGATIVE_INFINITY) {
-        bestScore = expectedScores.expectedPreparedScore(context.current(), seen, best);
-      }
       var candidate = prepare(context, suited, bid);
-      double score = expectedScores.expectedPreparedScore(context.current(), seen, candidate);
-      // 작은 표본에서 근소한 차이로 공약을 바꾸지 않도록 같은 배분을 더 비교합니다.
-      double difference = score - bestScore;
-      if (Math.abs(difference) <= 4) {
-        difference = expectedScores.confirmedPreparedScore(context.current(), seen, candidate)
-            - expectedScores.confirmedPreparedScore(context.current(), seen, best);
-      }
+      double difference = expectedScores.comparePreparedScores(context.current(), seen, candidate, best);
       if (difference > 0) {
         best = candidate;
-        bestScore = score;
       }
     }
     return best;

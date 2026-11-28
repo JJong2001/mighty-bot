@@ -37,7 +37,11 @@ final class OppositionSupport {
 
   static Optional<PlayDecision> choose(View view, PlayFacts facts, List<Action> legal) {
     boolean teamCanTake = oppositionBehindCanTake(view, facts);
-    if (!teamCanTake && !supportOpportunity(view, facts)) {
+    var ruff = new TrickContinuation(view, facts).alliedRuffBehind();
+    // 유일한 점수는 불확실한 간에 걸지 않습니다. 무문양과 기루 위치가 함께 강할 때는 예외입니다.
+    boolean ruffSupport = ruff.filter(r -> view.hand().stream().filter(c -> c.points() > 0).count() >= 2
+        || r.knownVoid() && r.ownershipWeight() >= 0.75).isPresent();
+    if (!teamCanTake && !supportOpportunity(view, facts) && !ruffSupport) {
       return Optional.empty();
     }
     DeclarerPressure pressure = new DeclarerPressure(view, facts);
@@ -99,6 +103,12 @@ final class OppositionSupport {
 
   private static boolean supportOpportunity(View view, PlayFacts facts) {
     var winner = facts.currentWinner().orElseThrow();
+    // 주공이 이미 지는 카드를 낸 기회는 길이나 보유 점수 개수로 막지 않습니다.
+    // 뒤 프렌드가 역전할 수 있다는 것만으로 지원을 포기하지 않되, 위의 defense 필터는 유지합니다.
+    if (facts.allyWinning() && view.trick().stream()
+        .anyMatch(p -> p.seat().equals(view.context().declarer()))) {
+      return true;
+    }
     if (facts.allyWinning() && winner.action().card() instanceof StandardCard ruff
         && view.contract().trump().matches(ruff.suit())
         && ruff.suit() != facts.conditions().leadSuit()) {
@@ -129,10 +139,16 @@ final class OppositionSupport {
       return supportsTrumpWinnerBehind(view, facts, card);
     }
     boolean ordinaryAttack = facts.cards().outsideCards().stream()
-        .anyMatch(c -> c instanceof StandardCard higher
+        .filter(c -> c instanceof StandardCard higher
             && higher.suit() == card.suit() && higher.rank().value() > card.rank().value()
             && !c.equals(Rules.mighty(view.contract().trump())) && !facts.cards()
-            .isDesignatedFriendCard(c));
+            .isDesignatedFriendCard(c))
+        // 초구 K 등으로 주공의 잔여 A가 시사되면 이를 뒤 야당의 공격 카드로 세지 않습니다.
+        .filter(c -> !facts.locations().suggestedHolders(c).contains(view.context().declarer()))
+        .anyMatch(c -> facts.remainingSeats().stream()
+            .anyMatch(s -> !s.equals(view.context().declarer())
+                && !facts.teams().friendSeat().filter(s::equals).isPresent()
+                && facts.locations().supportedHolder(s, c)));
     if (!ordinaryAttack) {
       return false;
     }

@@ -20,7 +20,7 @@ public final class PreparedRoundEvaluator {
 
   private static final int KNOWN_KITTY_SAMPLES = 32;
   private static final int CONFIRM_KNOWN_KITTY_SAMPLES = 128;
-  private static final Map<PreparedEvaluationKey, Score> PREPARED_CACHE = new ConcurrentHashMap<>();
+  private static final Map<PreparedEvaluationKey, List<Outcome>> PREPARED_CACHE = new ConcurrentHashMap<>();
   private static final List<Seat> SEATS = IntStream.range(0, GameMode.PLAYING_PLAYER_COUNT)
       .mapToObj(Seat::new).toList();
   private static final PlayOrder ORDER = PlayOrder.from(
@@ -53,7 +53,39 @@ public final class PreparedRoundEvaluator {
     return preparedScore(current, seen, preparation, List.of(), CONFIRM_KNOWN_KITTY_SAMPLES).mean();
   }
 
+  /** 같은 배분의 정산 차가 불확실할 때만 128판으로 확대합니다. */
+  public double compare(Bid current, List<Card> seen, PreparationPlan candidate,
+      PreparationPlan baseline) {
+    var left = preparedSamples(current, seen, candidate, List.of(), KNOWN_KITTY_SAMPLES);
+    var right = preparedSamples(current, seen, baseline, List.of(), KNOWN_KITTY_SAMPLES);
+    var differences = java.util.stream.IntStream.range(0, left.size())
+        .map(i -> left.get(i).settlement() - right.get(i).settlement()).boxed().toList();
+    double difference = differences.stream().mapToInt(Integer::intValue).average().orElseThrow();
+    if (needsConfirmation(differences)) {
+      return confirmedMean(current, seen, candidate) - confirmedMean(current, seen, baseline);
+    }
+    return difference;
+  }
+
+  static boolean needsConfirmation(List<Integer> differences) {
+    if (differences.size() < 2) {
+      return true;
+    }
+    double mean = differences.stream().mapToInt(Integer::intValue).average().orElseThrow();
+    double squares = differences.stream().mapToDouble(x -> (x - mean) * (x - mean)).sum();
+    double standardError = Math.sqrt(squares / (differences.size() - 1) / differences.size());
+    // 기존 4점 근접 비교도 유지하되, 변동이 큰 32판의 95% 구간(t≈2.04)도 봅니다.
+    return Math.abs(mean) <= Math.max(4, 2.04 * standardError);
+  }
+
   private Score preparedScore(Bid current, List<Card> seen, PreparationPlan preparation,
+      List<PublicBid> auction, int samples) {
+    var outcomes = preparedSamples(current, seen, preparation, auction, samples);
+    return new Score(outcomes.stream().mapToInt(Outcome::settlement).average().orElseThrow(),
+        (int) outcomes.stream().filter(Outcome::succeeded).count());
+  }
+
+  private List<Outcome> preparedSamples(Bid current, List<Card> seen, PreparationPlan preparation,
       List<PublicBid> auction, int samples) {
     List<Card> kept = DeckFactory.create().stream().filter(seen::contains)
         .filter(card -> !preparation.discarded().contains(card)).toList();
@@ -67,8 +99,7 @@ public final class PreparedRoundEvaluator {
           .toList();
       String seenKey = seen.stream().map(Card::toCode).sorted().toList().toString();
       Random random = new Random(seenKey.hashCode());
-      int total = 0;
-      int wins = 0;
+      List<Outcome> outcomes = new ArrayList<>();
       for (int sample = 0; sample < samples; sample++) {
         List<Card> opponents = new ArrayList<>(unseen);
         Collections.shuffle(opponents, random);
@@ -76,10 +107,9 @@ public final class PreparedRoundEvaluator {
             key.auction());
         round.takeKitty(DECLARER);
         var outcome = playPrepared(round, preparation);
-        total += outcome.settlement();
-        wins += outcome.succeeded() ? 1 : 0;
+        outcomes.add(outcome);
       }
-      return new Score((double) total / samples, wins);
+      return List.copyOf(outcomes);
     });
   }
 

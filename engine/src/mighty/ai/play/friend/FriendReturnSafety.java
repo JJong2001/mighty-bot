@@ -81,7 +81,8 @@ public final class FriendReturnSafety {
         lastRuff = i;
       }
     }
-    return (!ruffed && rounds < 2) || (requested && lastRequest >= lastRuff
+    // 같은 구의 요청 뒤 간이 확인됐다면 그 요청은 재반환의 근거가 아닙니다.
+    return (!ruffed && rounds < 2) || (requested && lastRequest > lastRuff
         && lastRequest == view.context().history().size() - 1);
   }
 

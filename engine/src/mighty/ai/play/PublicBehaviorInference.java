@@ -18,11 +18,27 @@ public final class PublicBehaviorInference {
     ANSWERED_REQUEST, RETURNED_TRUMP, CONTINUED_WITH_TOP
   }
 
+  public enum HoldingEvidence {
+    INDEPENDENT_FRIEND_OPENING_HONOR, DECLARER_GUN_LEAD
+  }
+
+  public record HoldingHint(Seat seat, Card card, HoldingEvidence evidence) {}
+
+  private final List<HoldingHint> holdingHints;
+
   private final Set<Seat> likelyFriends;
   private final Map<Seat, Set<SupportEvidence>> support;
   private final Map<Seat, Integer> missedJokerCaptures;
+  public record MissedHonor(Seat seat, StandardCard card) {}
+  private final Map<MissedHonor, Integer> missedHonors;
 
   public PublicBehaviorInference(View view) {
+    List<HoldingHint> hints = new ArrayList<>();
+    for (var trick : view.context().history()) {
+      observeHoldingHint(view, trick.cards(), trick.number(), hints);
+    }
+    observeHoldingHint(view, view.trick(), view.trickNumber(), hints);
+    holdingHints = List.copyOf(hints);
     Map<Seat, EnumSet<SupportEvidence>> observed = new HashMap<>();
     var attacks = OppositionSignals.openingAttackers(view);
     var declarer = view.context().declarer();
@@ -72,10 +88,57 @@ public final class PublicBehaviorInference {
           knownFriend, attacks, missed);
     }
     missedJokerCaptures = Map.copyOf(missed);
+    Map<MissedHonor, Integer> honors = new HashMap<>();
+    for (var trick : view.context().history()) {
+      var plays = trick.cards();
+      if (plays.size() != view.context().playOrder().seats().size()) continue;
+      var actor = plays.get(plays.size() - 1);
+      var prefix = plays.subList(0, plays.size() - 1);
+      var winner = Rules.currentWinner(view.contract().trump(), trick.number(), prefix).orElseThrow();
+      var conditions = Rules.conditionsFor(view.contract().trump(), trick.number(), plays.get(0).action());
+      if (prefix.stream().mapToInt(p -> p.action().card().points()).sum() < 2
+          || !opposed(view, actor.seat(), winner.seat(), knownFriend, attacks)
+          || !(actor.action().card() instanceof StandardCard played)
+          || played.suit() != conditions.leadSuit()
+          || Rules.strength(played, conditions) > Rules.strength(winner.action().card(), conditions)) continue;
+      // 마지막 자리에서 점수 구를 잡지 않은 행동만 사용합니다. 보유 불가능이 아닌 약한 반증입니다.
+      for (Rank rank : Rank.values()) {
+        var candidate = new StandardCard(played.suit(), rank);
+        if (!candidate.equals(mighty) && candidate.points() > 0
+            && Rules.strength(candidate, conditions) > Rules.strength(winner.action().card(), conditions)) {
+          honors.merge(new MissedHonor(actor.seat(), candidate), 1, Integer::sum);
+        }
+      }
+    }
+    missedHonors = Map.copyOf(honors);
+  }
+
+  public int missedCaptures(Seat seat, StandardCard card) {
+    return missedHonors.getOrDefault(new MissedHonor(seat, card), 0);
   }
 
   public Set<Seat> likelyFriends() {
     return likelyFriends;
+  }
+
+  /** 행동의 설계 의도를 읽는 증거이며, 카드 보유를 확정하거나 합법 수를 제한하지 않습니다. */
+  public List<HoldingHint> holdingHints() {
+    return holdingHints;
+  }
+
+  private static void observeHoldingHint(View view, List<PublicPlay> plays, TrickNumber number,
+      List<HoldingHint> hints) {
+    if (plays.isEmpty()) return;
+    var lead = plays.get(0);
+    if (!lead.seat().equals(view.context().declarer())
+        || !(lead.action().card() instanceof StandardCard card)) return;
+    if (number.isFirst()) {
+      DeclarerOpeningSignal.retainedHonors(view, lead).forEach(higher ->
+          hints.add(new HoldingHint(lead.seat(), higher, HoldingEvidence.INDEPENDENT_FRIEND_OPENING_HONOR)));
+    }
+    if (card.equals(Rules.gun(view.contract().trump()))) {
+      hints.add(new HoldingHint(lead.seat(), Joker.INSTANCE, HoldingEvidence.DECLARER_GUN_LEAD));
+    }
   }
 
   public Map<Seat, Set<SupportEvidence>> supportEvidence() {

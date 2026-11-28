@@ -36,9 +36,12 @@ public final class ContractChangeRules {
     if (proposed.points() <= current.points()) {
       return false;
     }
-    // 같은 문양의 임의 인상은 미확정이므로, 문서에서 확인된 풀 인상만 지원합니다.
+    // 닷노로 낙찰받은 뒤 곱노 운영이 완성되면 같은 NT의 곱노 인상도 허용합니다.
+    // 그 밖의 같은 문양 인상은 기존에 확인된 풀 인상 범위를 유지합니다.
     if (proposed.trump() == current.trump()) {
-      return proposed.points() == Bid.MAX_POINTS;
+      return proposed.points() == Bid.MAX_POINTS
+          || (current.trump() == Trump.NO_TRUMP && current.points() == 15
+          && proposed.points() == 17 && phase != GamePhase.BEFORE_KITTY);
     }
     int increase = phase == GamePhase.BEFORE_KITTY || proposed.trump() == Trump.NO_TRUMP ? 1 : 2;
     return proposed.points() - current.points() >= increase;

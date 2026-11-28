@@ -309,7 +309,9 @@ final class DeclarerLeadStrategy {
     var view = position.view();
     List<Action> trumps = position.trumps();
     TrumpControl control = new TrumpControl(view, position.facts());
-    var countedProbe = control.singleBlockerProbe(trumps);
+    // 조커로 확실히 상위를 뺄 수 있으면 물패를 먼저 내주지 않습니다.
+    var countedProbe = jokers.isEmpty() ? control.singleBlockerProbe(trumps)
+        : java.util.Optional.<Action>empty();
     if (countedProbe.isPresent()) {
       return decision(countedProbe.get(), "받침이 충분하고 외부 상위가 한 장뿐이므로 물패로 빼고 점수 기루를 살립니다.");
     }

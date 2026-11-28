@@ -81,8 +81,11 @@ class TumbleNoTrumpPlayTest {
     String hand = "S4 SK SA D3 D6 DQ DK CK JK";
     var quiet = view(0, 0, NT, 15, hand, BURIED, ACE, UnrevealedFriend.INSTANCE, List.of(first),
         List.of(p(1, "S9"), p(2, "S2"), p(3, "S3"), p(4, "S5")));
-    // K is an ordinary top: do not spend mighty merely because the previous lead lost.
-    assertEquals(card("SK"), new RulePlayPolicy().choose(quiet).card());
+    // 합의한 닷노 운영: 작은 마공은 흘리고 K는 점수가 실린 마공에 남깁니다.
+    assertEquals(card("S4"), new RulePlayPolicy().choose(quiet).card());
+    var spadePoints = view(0, 0, NT, 15, hand, BURIED, ACE, UnrevealedFriend.INSTANCE, List.of(first),
+        List.of(p(1, "S9"), p(2, "SJ"), p(3, "S10"), p(4, "S5")));
+    assertEquals(card("SK"), new RulePlayPolicy().choose(spadePoints).card());
     var loaded = view(0, 0, NT, 15, hand, BURIED, ACE, UnrevealedFriend.INSTANCE, List.of(first),
         List.of(p(1, "HA"), p(2, "HK"), p(3, "HQ"), p(4, "H4")));
     assertEquals(card("SA"), new RulePlayPolicy().choose(loaded).card());

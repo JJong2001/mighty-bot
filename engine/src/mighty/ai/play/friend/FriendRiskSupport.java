@@ -72,8 +72,14 @@ final class FriendRiskSupport {
     if (!spent.contains(Rules.mighty(trump)) || !spent.contains(Joker.INSTANCE)) {
       return Optional.empty();
     }
-    boolean defenderBehind = facts.remainingSeats().stream().anyMatch(seat ->
-        !facts.teams().isAlly(seat) && !facts.cards().isVoid(seat, card.suit()));
+    int ownBest = PlaySupport.ordinary(facts.winningActions(), view).stream()
+        .map(a -> (StandardCard)a.card()).filter(c -> c.suit() == card.suit())
+        .mapToInt(c -> c.rank().value()).max().orElse(card.rank().value());
+    // 뒤 야당이 문양을 가질 수 있다는 것과 내 승리 카드를 이길 상위를 가졌다는 것은 다릅니다.
+    boolean defenderBehind = facts.cards().outsideCards(card.suit()).stream()
+        .filter(c -> c.rank().value() > ownBest)
+        .anyMatch(c -> facts.remainingSeats().stream().anyMatch(seat ->
+            !facts.teams().isAlly(seat) && facts.locations().supportedHolder(seat, c)));
     if (!defenderBehind) {
       return Optional.empty();
     }
