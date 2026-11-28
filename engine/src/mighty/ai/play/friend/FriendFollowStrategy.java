@@ -2,6 +2,7 @@ package mighty.ai.play.friend;
 
 import mighty.game.friend.UnrevealedFriend;
 import mighty.model.Trump;
+import mighty.model.Suit;
 import mighty.model.StandardCard;
 import mighty.model.Rank;
 import mighty.model.Joker;
@@ -115,11 +116,13 @@ final class FriendFollowStrategy {
     if (view.contract().trump() == Trump.NO_TRUMP && view.trickNumber().value() == 1
         && view.friendSelection() instanceof CardFriend friend
         && friend.card() instanceof StandardCard c && c.rank() == Rank.ACE
-        && !c.equals(Rules.mighty(view.contract().trump()))) {
+        && c.suit() == Suit.CLUB) {
+      // NT의 총은 끌입니다. 다른 A 프렌드는 콜에 조커로 응답해도 지정 A를 낼
+      // 기회를 직접 막지 않으므로, 이 초구 버림 예외를 모든 A로 확대하지 않습니다.
       var deadJoker = legal.stream().filter(a -> a.card() instanceof Joker).findFirst();
       if (deadJoker.isPresent()) {
         return Optional.of(new PlayDecision(deadJoker.get(),
-            "A 프렌드는 초구의 무효 조커를 버려 주공의 총이 지정 A의 응답을 방해하지 않게 합니다."));
+            "끌A 프렌드는 초구의 무효 조커를 버려 주공의 총에 끌A로 응답할 수 있게 합니다."));
       }
     }
     if (view.contract().trump() != Trump.NO_TRUMP

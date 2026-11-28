@@ -40,21 +40,17 @@ final class FriendResources {
     }
     // 탑카도 실제로 선을 얻어 사용할 경로가 있어야 보존합니다.
     if (facts.isSuitTop(card)) {
+      // 주공이 공개한 부기루 물패를 나중에 받아 줄 탑은 한 장이어도 연결 자원입니다.
+      if (DeclarerOperations.contains(view, facts, card.suit())
+          && !facts.cards().isVoid(view.context().declarer(), card.suit())) {
+        return true;
+      }
       boolean entry = view.hand().stream().anyMatch(c -> c instanceof Joker
           || c.equals(Rules.mighty(view.contract().trump())));
       boolean canFollowLater = held.size() > 1
           && facts.cards().trumps().remainingHand(view.context().declarer()) > held.size()
           && !facts.cards().isVoid(view.context().declarer(), card.suit());
       if (entry || canFollowLater) {
-        return true;
-      }
-      int possibleTrump = facts.cards().trumps().outside().size();
-      int special = (facts.cards().outsideCards().contains(Joker.INSTANCE) ? 1 : 0)
-          + (facts.cards().outsideCards().contains(Rules.mighty(view.contract().trump())) ? 1 : 0);
-      int sideSlots = facts.cards().trumps().remainingHand(view.context().declarer())
-          - possibleTrump - special;
-      if (sideSlots > 0 && DeclarerOperations.contains(view, facts, card.suit())
-          && !facts.cards().isVoid(view.context().declarer(), card.suit())) {
         return true;
       }
     }

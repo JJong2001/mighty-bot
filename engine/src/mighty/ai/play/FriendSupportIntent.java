@@ -31,7 +31,16 @@ public final class FriendSupportIntent {
         .forEach(t -> shown.merge(((StandardCard) t.cards().get(0).action().card()).suit(), 1L,
             Long::sum));
     return shown.entrySet().stream().filter(e -> e.getValue() >= 2)
-        .max(Map.Entry.comparingByValue()).map(Map.Entry::getKey);
+        .max(Map.Entry.comparingByValue()).map(Map.Entry::getKey).or(() -> {
+          // 닷노·엿노의 지정 A는 초기 주력 추정입니다. 곱노의 별도 선 연결용
+          // A 프렌드까지 주력으로 단정하거나 이후 관측을 덮어쓰지 않습니다.
+          if (view.contract().points() <= 16 && view.friendSelection() instanceof CardFriend friend
+              && friend.card() instanceof StandardCard called && called.rank() == Rank.ACE
+              && !called.equals(Rules.mighty(Trump.NO_TRUMP))) {
+            return Optional.of(called.suit());
+          }
+          return Optional.empty();
+        });
   }
 
   /**
