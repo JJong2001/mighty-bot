@@ -93,6 +93,11 @@ public final class BidExpectedScoreEvaluator {
     return PREPARED.confirmedMean(current, seen, preparation);
   }
 
+  public double comparePreparedScores(Bid current, List<Card> seen, PreparationPlan candidate,
+      PreparationPlan baseline) {
+    return PREPARED.compare(current, seen, candidate, baseline);
+  }
+
   private static ScoreSamples samples(BiddingHand hand, Bid contract, int kittyCount,
       int dealsPerKitty) {
     List<Card> own = DeckFactory.create().stream().filter(hand::contains).toList();

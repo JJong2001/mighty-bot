@@ -8,6 +8,19 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class ContractChangeRulesTest {
+  @Test
+  void fifteenNoTrumpMayUpgradeToSeventeenAfterKitty() {
+    var award = new Bid(15, Trump.NO_TRUMP);
+    var raised = new Bid(17, Trump.NO_TRUMP);
+    assertTrue(ContractChangeRules.canChange(award, award, raised, GamePhase.DISCARD));
+    assertTrue(ContractChangeRules.canChange(award, award, raised, GamePhase.FRIEND));
+    assertFalse(ContractChangeRules.canChange(award, award, raised, GamePhase.PLAY));
+    assertFalse(ContractChangeRules.canChange(award, award,
+        new Bid(16, Trump.NO_TRUMP), GamePhase.DISCARD));
+    var suited = new Bid(15, Trump.CLUB);
+    assertFalse(ContractChangeRules.canChange(suited, suited,
+        new Bid(17, Trump.CLUB), GamePhase.DISCARD));
+  }
 
   @Test
   @DisplayName("풀 낙찰은 20점을 유지하며 기루와 노기루를 반복 변경할 수 있다")
