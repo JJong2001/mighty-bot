@@ -21,6 +21,7 @@ public final class PlayFacts {
 
   private final View view;
   private final CardKnowledge cards;
+  private final CardLocationInference locations;
   private final TeamKnowledge teams;
   private final PublicBehaviorInference behavior;
   private final JokerBelief joker;
@@ -36,8 +37,9 @@ public final class PlayFacts {
     this.view = java.util.Objects.requireNonNull(view);
     cards = new CardKnowledge(view);
     behavior = new PublicBehaviorInference(view);
+    locations = new CardLocationInference(view, cards, behavior);
     teams = new TeamKnowledge(view, behavior);
-    joker = new JokerBelief(view, teams, behavior);
+    joker = new JokerBelief(view, teams, behavior, locations);
     legal = LegalActions.legalActions(new LegalActionContext(view.hand(), view.contract().trump(),
         view.trickNumber(), view.trick()));
     conditions = view.trick().stream().findFirst().map(play ->
@@ -62,6 +64,10 @@ public final class PlayFacts {
 
   public CardKnowledge cards() {
     return cards;
+  }
+
+  public CardLocationInference locations() {
+    return locations;
   }
 
   /**
@@ -184,7 +190,7 @@ public final class PlayFacts {
     int strength = Rules.strength(winner.action().card(), conditions());
     for (Seat seat : remainingSeats()) {
       for (Card card : cards.outsideCards()) {
-        if (card instanceof StandardCard standard && cards.isVoid(seat, standard.suit())) {
+        if (!locations.possibleHolders(card).contains(seat)) {
           continue;
         }
         if (Rules.strength(card, conditions()) > strength) {

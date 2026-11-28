@@ -126,11 +126,11 @@ public final class TrumpOwnership {
     }
     Map<Seat, Double> weights = new LinkedHashMap<>();
     for (Seat seat : view.context().playOrder().seats()) {
-      if (seat.equals(view.self()) || cards.isVoid(seat, card.suit()) || remainingHand(seat) == 0) {
+      if (!facts.locations().possibleHolders(card).contains(seat)) {
         continue;
       }
       double weight = likelyShort(seat) ? 0.08 : seat.equals(view.context().declarer()) ? 2.0 : 1.0;
-      weights.put(seat, weight);
+      weights.put(seat, weight * facts.locations().behavioralWeight(seat, card));
     }
     long rounds = view.context().history().stream().filter(t -> view.contract().trump().matches(
         Rules.conditionsFor(view.contract().trump(), t.number(), t.cards().get(0).action())
@@ -143,7 +143,9 @@ public final class TrumpOwnership {
         && p.action().card() instanceof StandardCard c && !view.contract().trump().matches(c.suit())
         && !c.equals(Rules.mighty(view.contract().trump())));
     if (rounds >= 2 && seekingLoss) {
-      weights.computeIfPresent(view.context().declarer(), (seat, w) -> w * 12);
+      // 순회 뒤 사이드를 냈다는 이유만으로 여러 자리에 남은 상위까지 주공에게 몰지 않습니다.
+      boolean onlyDeclarer = weights.keySet().stream().allMatch(view.context().declarer()::equals);
+      weights.computeIfPresent(view.context().declarer(), (seat, w) -> w * (onlyDeclarer ? 12 : 2));
     }
     // 주공의 낮은 기루를 비탑으로 잡은 자리에는 미소모 상위도 있을 가능성을 높입니다.
     for (var trick : view.context().history()) {
@@ -176,8 +178,12 @@ public final class TrumpOwnership {
     if (seat.equals(view.self())) {
       return own().size();
     }
-    return Math.min(remainingHand(seat), outside().stream().mapToDouble(c ->
-        ownerProbabilities(c, facts).getOrDefault(seat, 0.0)).sum());
+    var suit = Arrays.stream(Suit.values()).filter(view.contract().trump()::matches).findFirst();
+    if (suit.isEmpty()) return 0;
+    var range = facts.locations().countRange(seat, suit.get());
+    double estimate = outside().stream().mapToDouble(c ->
+        ownerProbabilities(c, facts).getOrDefault(seat, 0.0)).sum();
+    return Math.max(range.minimum(), Math.min(range.maximum(), estimate));
   }
 
   /**
@@ -188,9 +194,13 @@ public final class TrumpOwnership {
       return false;
     }
     int hand = remainingHand(seat);
-    if (hand > 4) {
-      return false;
-    }
+    if (hand <= 0) return false;
+    var suit = outside().get(0).suit();
+    var range = facts.locations().countRange(seat, suit);
+    if (range.minimum() >= hand - 1 && range.minimum() > 0) return true;
+    boolean concentrated = outside().stream().allMatch(c -> facts.locations().possibleHolders(c)
+        .stream().allMatch(seat::equals));
+    if (hand > 4 && !concentrated) return false;
     double trumps = expectedCount(seat, facts);
     return trumps >= Math.max(1, hand - 0.75);
   }
