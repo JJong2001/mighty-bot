@@ -20,26 +20,17 @@ import mighty.model.StandardCard;
 public final class PlayFacts {
 
   private final View view;
-  private final CardKnowledge cards;
-  private final CardLocationInference locations;
-  private final TeamKnowledge teams;
-  private final PublicBehaviorInference behavior;
-  private final JokerBelief joker;
+  private final BoardInference board;
   private final List<Action> legal;
   private final Optional<TrickConditions> conditions;
   private final Optional<PublicPlay> winner;
   private final List<Action> winning;
   private final List<Seat> remaining;
   private final int trickPoints;
-  private final DeclarerSuitInference declarerSuits;
 
   public PlayFacts(View view) {
     this.view = java.util.Objects.requireNonNull(view);
-    cards = new CardKnowledge(view);
-    behavior = new PublicBehaviorInference(view);
-    locations = new CardLocationInference(view, cards, behavior);
-    teams = new TeamKnowledge(view, behavior);
-    joker = new JokerBelief(view, teams, behavior, locations);
+    board = new BoardInference(view);
     legal = LegalActions.legalActions(new LegalActionContext(view.hand(), view.contract().trump(),
         view.trickNumber(), view.trick()));
     conditions = view.trick().stream().findFirst().map(play ->
@@ -48,40 +39,43 @@ public final class PlayFacts {
     winning = calculateWinningActions();
     remaining = calculateRemainingSeats();
     trickPoints = view.trick().stream().mapToInt(play -> play.action().card().points()).sum();
-    declarerSuits = new DeclarerSuitInference(view, cards);
   }
 
   /**
-   * 이번 관측에서 계산한 카드 카운팅을 반환합니다.
+   * 이번 관측에서 역할별 판단이 공유하는 추론을 반환합니다.
    */
+  public BoardInference board() {
+    return board;
+  }
+
   public PublicBehaviorInference behavior() {
-    return behavior;
+    return board.behavior();
   }
 
   public JokerBelief joker() {
-    return joker;
+    return board.joker();
   }
 
   public CardKnowledge cards() {
-    return cards;
+    return board.cards();
   }
 
   public CardLocationInference locations() {
-    return locations;
+    return board.locations();
   }
 
   /**
    * 역할마다 같은 공개 증거를 읽고, 지원·수비 판단은 각 역할에 맡깁니다.
    */
   public DeclarerSuitInference declarerSuits() {
-    return declarerSuits;
+    return board.declarerSuits();
   }
 
   /**
    * 확실한 동료 관계를 판정하는 정보를 반환합니다.
    */
   public TeamKnowledge teams() {
-    return teams;
+    return board.teams();
   }
 
   /**
@@ -102,7 +96,7 @@ public final class PlayFacts {
    * 현재까지 확실한 동료가 이기고 있는지 확인합니다.
    */
   public boolean allyWinning() {
-    return currentWinner().filter(play -> teams.isAlly(play.seat())).isPresent();
+    return currentWinner().filter(play -> board.teams().isAlly(play.seat())).isPresent();
   }
 
   /**
@@ -175,7 +169,7 @@ public final class PlayFacts {
     if (!(card instanceof StandardCard standard)) {
       return false;
     }
-    return cards.outsideCards(standard.suit()).stream().noneMatch(other ->
+    return board.cards().outsideCards(standard.suit()).stream().noneMatch(other ->
         !other.equals(Rules.mighty(view.contract().trump()))
             && other.rank().value() > standard.rank().value());
   }
@@ -189,8 +183,8 @@ public final class PlayFacts {
     }
     int strength = Rules.strength(winner.action().card(), conditions());
     for (Seat seat : remainingSeats()) {
-      for (Card card : cards.outsideCards()) {
-        if (!locations.possibleHolders(card).contains(seat)) {
+      for (Card card : board.cards().outsideCards()) {
+        if (!board.locations().possibleHolders(card).contains(seat)) {
           continue;
         }
         if (Rules.strength(card, conditions()) > strength) {
@@ -224,7 +218,7 @@ public final class PlayFacts {
   public boolean isMasterLead(Action action) {
     TrickConditions lead = Rules.conditionsFor(view.contract().trump(), view.trickNumber(), action);
     int strength = Rules.strength(action.card(), lead);
-    return cards.outsideCards().stream().noneMatch(card -> Rules.strength(card, lead) > strength);
+    return board.cards().outsideCards().stream().noneMatch(card -> Rules.strength(card, lead) > strength);
   }
 
 }

@@ -115,6 +115,14 @@ public final class PreparedRoundEvaluator {
 
 
   public static Outcome playPrepared(RoundState round, PreparationPlan preparation) {
+    applyPreparation(round, preparation);
+    RoundResult result = ROUND_SERVICE.playToEnd(round);
+    boolean declaredSolo = preparation.friend() == SpecialFriend.NONE;
+    return new Outcome(RoundSettlement.nominal(result, declaredSolo).get(DECLARER),
+        result.succeeded());
+  }
+
+  public static void applyPreparation(RoundState round, PreparationPlan preparation) {
     var history = round.contractHistory();
     for (var bid : PreparationDeclarations.discardDeclarations(round.discardView(DECLARER),
         history.get(0), history, preparation)) {
@@ -122,10 +130,6 @@ public final class PreparedRoundEvaluator {
     }
     round.discard(DECLARER, preparation.discarded());
     round.chooseFriend(DECLARER, preparation.friend());
-    RoundResult result = ROUND_SERVICE.playToEnd(round);
-    boolean declaredSolo = preparation.friend() == SpecialFriend.NONE;
-    return new Outcome(RoundSettlement.nominal(result, declaredSolo).get(DECLARER),
-        result.succeeded());
   }
 
   public static RoundState createRound(List<Card> own, Bid contract, List<Card> kitty,

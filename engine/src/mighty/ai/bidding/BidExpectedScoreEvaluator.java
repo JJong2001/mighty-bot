@@ -147,14 +147,8 @@ public final class BidExpectedScoreEvaluator {
   private static int evaluateKitty(List<Card> own, Bid contract, List<Card> kitty,
       List<Card> opponentPool, List<List<Card>> opponentDeals) {
     RoundState preparationRound = createRound(own, contract, kitty, opponentPool);
-    Bid before = PreparationPlanner.highBeforeKitty(BiddingHand.from(own), contract, contract)
-        .orElse(contract);
-    if (!before.equals(contract)) {
-      preparationRound.reviseContract(DECLARER, before);
-    }
-    preparationRound.takeKitty(DECLARER);
-    PreparationPlan preparation = PREPARATION_PLANNER.choose(
-        preparationRound.discardView(DECLARER), contract);
+    Bid before = sampledBeforeKitty(own, contract);
+    PreparationPlan preparation = sampledPreparation(preparationRound, contract, before);
     int totalSettlement = 0;
     for (List<Card> opponents : opponentDeals) {
       RoundState round = createRound(own, contract, kitty, opponents);
@@ -167,4 +161,17 @@ public final class BidExpectedScoreEvaluator {
     return totalSettlement;
   }
 
+  static Bid sampledBeforeKitty(List<Card> own, Bid contract) {
+    return PreparationPlanner.highBeforeKitty(BiddingHand.from(own), contract, contract)
+        .orElse(contract);
+  }
+
+  static PreparationPlan sampledPreparation(RoundState round, Bid contract, Bid before) {
+    if (!before.equals(contract)) {
+      round.reviseContract(DECLARER, before);
+    }
+    round.takeKitty(DECLARER);
+    return PREPARATION_PLANNER.choose(
+        round.discardView(DECLARER), contract);
+  }
 }
