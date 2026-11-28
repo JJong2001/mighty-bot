@@ -195,6 +195,26 @@ final class HighNoTrumpPlay {
   static Optional<PlayDecision> follow(DeclarerPosition position) {
     var view = position.view();
     var facts = position.facts();
+    // 곱노 이상의 긴 AT 주력은 KQJ 분산을 가정하지 않습니다. 반환받은 지금
+    // 마이티로 한 바퀴를 더 빼고 A와 조커의 소모 기회를 남깁니다.
+    if (view.contract().trump() == Trump.NO_TRUMP && view.contract().points() >= 17
+        && facts.teams().friendSeat().filter(view.trick().get(0).seat()::equals).isPresent()) {
+      var suit = facts.conditions().leadSuit();
+      var main = position.inSuit(suit);
+      boolean aceTen = main.stream().anyMatch(a -> ((StandardCard) a.card()).rank() == Rank.ACE)
+          && main.stream().anyMatch(a -> ((StandardCard) a.card()).rank() == Rank.TEN);
+      long honors = facts.cards().outsideCards(suit).stream()
+          .filter(c -> c.rank().value() > Rank.TEN.value() && c.rank().value() < Rank.ACE.value())
+          .count();
+      if (suit != Suit.SPADE && position.initialLength(suit) >= 6 && aceTen && honors >= 2
+          && view.hand().contains(Joker.INSTANCE)) {
+        var sweep = playCard(facts.winningActions(), Rules.mighty(Trump.NO_TRUMP),
+            "긴 AT 주력의 상위가 몰렸을 가능성을 남기고 마이티로 반환을 받아 한 바퀴 더 소모합니다.");
+        if (sweep.isPresent()) {
+          return sweep;
+        }
+      }
+    }
     var route = route(position);
     if (!facts.teams().isAlly(view.trick().get(0).seat()) || route.isEmpty()) {
       return Optional.empty();

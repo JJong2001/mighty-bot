@@ -69,7 +69,15 @@ final class TumbleNoTrumpPlay {
       if (!facts.allyWinning()) {
         var tops = PlaySupport.ordinary(winning, view).stream()
             .filter(a -> facts.isSuitTop(a.card())).toList();
-        if (!tops.isEmpty()) {
+        // 마지막 자리에서 작은 마공은 물패로 흘릴 수 있습니다. K를 지금 쓰면
+        // 뒤의 점수 마공을 회수할 카드와 마이티 받침을 함께 잃습니다.
+        boolean quietSpade = facts.conditions().leadSuit() == mighty.suit()
+            && facts.remainingSeats().isEmpty() && facts.trickPoints() <= 1
+            && !ScoreSupport.lossWouldDefeatContract(view, facts)
+            && view.trickNumber().value() < 9
+            && PlaySupport.ordinary(facts.passingActions(position.legal()), view).stream()
+            .anyMatch(a -> a.card().points() == 0);
+        if (!tops.isEmpty() && !quietSpade) {
           return Optional.of(new PlayDecision(PlaySupport.cheapest(tops, view),
               "우당탕탕: 살아난 일반 탑으로 회수하고 마쪼를 남깁니다."));
         }
