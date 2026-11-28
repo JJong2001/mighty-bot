@@ -18,7 +18,7 @@ public final class JokerBelief {
   private final Map<Seat, Double> weights;
 
   public JokerBelief(View view, TeamKnowledge teams, PublicBehaviorInference behavior) {
-    this(view, teams, behavior, new CardLocationInference(view, new CardKnowledge(view)));
+    this(view, teams, behavior, new CardLocationInference(view, new CardKnowledge(view), behavior));
   }
 
   JokerBelief(View view, TeamKnowledge teams, PublicBehaviorInference behavior,

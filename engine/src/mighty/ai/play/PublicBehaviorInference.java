@@ -22,7 +22,7 @@ public final class PublicBehaviorInference {
     INDEPENDENT_FRIEND_OPENING_HONOR, DECLARER_GUN_LEAD
   }
 
-  public record HoldingHint(Seat seat, Card card, HoldingEvidence evidence) {}
+  public record HoldingHint(Seat seat, Card card, HoldingEvidence evidence, BoardInference.HoldingAssessment strength) {}
 
   private final List<HoldingHint> holdingHints;
 
@@ -35,9 +35,9 @@ public final class PublicBehaviorInference {
   public PublicBehaviorInference(View view) {
     List<HoldingHint> hints = new ArrayList<>();
     for (var trick : view.context().history()) {
-      observeHoldingHint(view, trick.cards(), trick.number(), hints);
+      BoardInference.observeLead(view, trick.cards(), trick.number(), hints);
     }
-    observeHoldingHint(view, view.trick(), view.trickNumber(), hints);
+    BoardInference.observeLead(view, view.trick(), view.trickNumber(), hints);
     holdingHints = List.copyOf(hints);
     Map<Seat, EnumSet<SupportEvidence>> observed = new HashMap<>();
     var attacks = OppositionSignals.openingAttackers(view);
@@ -124,21 +124,6 @@ public final class PublicBehaviorInference {
   /** 행동의 설계 의도를 읽는 증거이며, 카드 보유를 확정하거나 합법 수를 제한하지 않습니다. */
   public List<HoldingHint> holdingHints() {
     return holdingHints;
-  }
-
-  private static void observeHoldingHint(View view, List<PublicPlay> plays, TrickNumber number,
-      List<HoldingHint> hints) {
-    if (plays.isEmpty()) return;
-    var lead = plays.get(0);
-    if (!lead.seat().equals(view.context().declarer())
-        || !(lead.action().card() instanceof StandardCard card)) return;
-    if (number.isFirst()) {
-      DeclarerOpeningSignal.retainedHonors(view, lead).forEach(higher ->
-          hints.add(new HoldingHint(lead.seat(), higher, HoldingEvidence.INDEPENDENT_FRIEND_OPENING_HONOR)));
-    }
-    if (card.equals(Rules.gun(view.contract().trump()))) {
-      hints.add(new HoldingHint(lead.seat(), Joker.INSTANCE, HoldingEvidence.DECLARER_GUN_LEAD));
-    }
   }
 
   public Map<Seat, Set<SupportEvidence>> supportEvidence() {

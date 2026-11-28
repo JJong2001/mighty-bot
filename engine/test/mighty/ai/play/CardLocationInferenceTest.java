@@ -35,12 +35,12 @@ class CardLocationInferenceTest {
     }
   }
 
-  @Test void jokerFriendOpeningKingSuggestsAceWithoutExcludingOtherHolders() {
+  @Test void jokerFriendOpeningKingConfirmsAceLocation() {
     var v = view(1,0,Trump.NO_TRUMP,15,"H2 H3 D2 D3 C2 C4 S2 S3 S4 S5","",
         new CardFriend(Joker.INSTANCE),UnrevealedFriend.INSTANCE,List.of(),List.of(p(0,"HK")));
     var facts = new PlayFacts(v);
     assertEquals(java.util.Set.of(new Seat(0)),facts.locations().suggestedHolders(card("HA")));
-    assertTrue(facts.locations().possibleHolders(card("HA")).contains(new Seat(4)));
+    assertFalse(facts.locations().possibleHolders(card("HA")).contains(new Seat(4)));
   }
 
   @Test void ownAceOverridesOpeningSignal() {
@@ -54,7 +54,7 @@ class CardLocationInferenceTest {
         new CardFriend(card("DA")),UnrevealedFriend.INSTANCE,List.of(),List.of(p(0,"C3")));
     var facts = new PlayFacts(v);
     assertEquals(java.util.Map.of(new Seat(0), 1.0),facts.joker().relativeWeights());
-    assertTrue(facts.locations().possibleHolders(Joker.INSTANCE).contains(new Seat(4)));
+    assertFalse(facts.locations().possibleHolders(Joker.INSTANCE).contains(new Seat(4)));
   }
 
   @Test void spadeVoidBehindCanStillOvertakeWithMighty() {

@@ -92,6 +92,13 @@ public final class CardLocationInference {
       }
       result.add(seat);
     }
+    // 자기 손패와 공개 제약에 모순되지 않는 운영 신호만 적용한다.
+    for (var hint : behavior.holdingHints()) {
+      if (hint.card().equals(card) && hint.strength() == BoardInference.HoldingAssessment.CONFIRMED
+          && result.contains(hint.seat())) {
+        return Set.of(hint.seat());
+      }
+    }
     return Set.copyOf(result);
   }
 
